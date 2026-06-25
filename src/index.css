@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-presencial: #16a34a;
+  --color-brand-presencial-light: #4ade80;
+  --color-brand-ead: #f97316;
+  --color-brand-ead-light: #fdba74;
+}
+
+@layer base {
+  body {
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    min-height: 1080px;
+  }
+}
+
+/* Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.2);
+}
+
+/* Glassmorphism Styles */
+.glass-header {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.04);
+}
+
+/* 3D Podium Styling */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.rotate-x-12 {
+  transform: rotateX(12deg);
+}
+
+.podium-shadow {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Custom glow animations for premium feeling */
+@keyframes pulse-glow-presencial {
+  0%, 100% {
+    box-shadow: 0 0 15px -3px rgba(22, 163, 74, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 25px 2px rgba(22, 163, 74, 0.4);
+  }
+}
+
+@keyframes pulse-glow-ead {
+  0%, 100% {
+    box-shadow: 0 0 15px -3px rgba(249, 115, 22, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 25px 2px rgba(249, 115, 22, 0.4);
+  }
+}
+
+.glow-presencial {
+  animation: pulse-glow-presencial 3s infinite ease-in-out;
+}
+
+.glow-ead {
+  animation: pulse-glow-ead 3s infinite ease-in-out;
+}
+
+/* Grid overlay background to resemble high-tech Salesforce/Stripe look */
+.bg-grid-pattern {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+}
+
+/* Soft blink animation for live indicator */
+@keyframes soft-blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.9); }
+}
+
+.live-indicator {
+  animation: soft-blink 2s infinite ease-in-out;
+}

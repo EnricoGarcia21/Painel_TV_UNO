@@ -26,13 +26,13 @@ import {
   saveDashboardData, 
   resetDashboardData, 
   setSimulationEnabled, 
-  getSimulationEnabled 
+  getSimulationEnabled,
+  adjustDailySales
 } from './api/mockData';
 import type { Consultant, DashboardData, Announcement } from './api/mockData';
 import { cn } from './lib/utils';
 import { Card, CardContent } from './components/ui/Card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './components/ui/Dialog';
-import { Podium3D } from './components/ui/Podium3D';
 import { AnnouncementCarousel } from './components/ui/AnnouncementCarousel';
 
 // React Query Client
@@ -49,6 +49,8 @@ function DashboardContent() {
   const [time, setTime] = useState(new Date());
   const [selectedConsultant, setSelectedConsultant] = useState<Consultant | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  
+  const todayDay = time.getDate(); // 1 to 31
   
   // Carousel states
   const [activeTab, setActiveTab] = useState<'presencial' | 'ead'>('presencial');
@@ -265,69 +267,129 @@ function DashboardContent() {
                     </div>
                   </div>
 
-                  <CardContent className="p-6 flex flex-col lg:flex-row gap-12 items-center justify-between flex-1">
-                    {/* Left: 3D Podium */}
-                    <div className="w-full lg:w-[45%] flex items-center justify-center pb-6 lg:pb-0 lg:pr-6">
-                      <Podium3D 
-                        consultants={data.presencial.ranking.slice(0, 3)} 
-                        theme="green"
-                        onConsultantClick={handleConsultantClick}
-                      />
-                    </div>
+                  <CardContent className="p-6 flex flex-col gap-6 flex-1 w-full">
+                    <div className="w-full space-y-4">
+                      <div className="flex flex-wrap gap-4 items-center justify-between text-xs font-bold text-slate-500">
+                        <p className="uppercase tracking-wider">Quadro Classificatório - Presencial</p>
+                        <div className="flex gap-3 text-[11px]">
+                          <span className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-100/50">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            {data.presencial.ranking.filter(c => c.status === 'active').length} Ativos
+                          </span>
+                          <span className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-100/50">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                            {data.presencial.ranking.filter(c => c.status === 'vacation').length} Férias
+                          </span>
+                        </div>
+                      </div>
 
-                    {/* Right: Spacious Classificatory Table */}
-                    <div className="w-full lg:w-[50%] space-y-4">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Quadro Classificatório - Presencial</p>
-                      <div className="space-y-3 pr-1">
-                        {data.presencial.ranking.filter(consultant => consultant.sales > 0).slice(0, 5).map((consultant) => (
-                          <div 
-                            key={consultant.id}
-                            onClick={() => handleConsultantClick(consultant)}
-                            className="group flex items-center justify-between p-4 rounded-2xl bg-white hover:bg-slate-50/80 border border-slate-100 hover:border-slate-200/60 shadow-2xs hover:shadow-xs cursor-pointer transition-all duration-300"
-                          >
-                            <div className="flex items-center gap-4">
-                              {/* Rank Pos */}
-                              <span className={cn(
-                                "w-6 text-center text-base font-extrabold",
-                                consultant.rank <= 3 ? "text-emerald-600" : "text-slate-400"
-                              )}>
-                                {consultant.rank}º
-                              </span>
-                              {/* Avatar */}
-                              <div className="h-10 w-10 rounded-full bg-emerald-50 flex items-center justify-center font-bold text-sm text-emerald-800 border border-emerald-100/50">
-                                {consultant.avatar}
-                              </div>
-                              {/* Consultant Name & Hub */}
-                              <div>
-                                <p className="text-base font-bold text-slate-800 group-hover:text-emerald-700 transition-colors">
-                                  {consultant.name}
-                                </p>
-                                <p className="text-[11px] text-slate-400 font-bold flex items-center gap-1 mt-0.5">
-                                  <MapPin className="h-3 w-3" />
-                                  Hub: {consultant.region}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-6">
-                              <div className="text-right">
-                                <p className="text-base font-extrabold text-slate-900">{consultant.sales} matrículas</p>
-                              </div>
-
-                              <div className={cn(
-                                "p-2 rounded-xl border",
-                                consultant.trend === 'up' ? "bg-emerald-50 text-emerald-600 border-emerald-100/50" :
-                                consultant.trend === 'down' ? "bg-red-50 text-red-600 border-red-100/50" :
-                                "bg-slate-50 text-slate-400 border-slate-100"
-                              )}>
-                                {consultant.trend === 'up' && <TrendingUp className="h-4.5 w-4.5" />}
-                                {consultant.trend === 'down' && <TrendingDown className="h-4.5 w-4.5" />}
-                                {consultant.trend === 'stable' && <Minus className="h-4.5 w-4.5" />}
-                              </div>
-                              <ChevronRight className="h-4.5 w-4.5 text-slate-300 group-hover:text-slate-500 transition-transform group-hover:translate-x-0.5" />
-                            </div>
-                          </div>
-                        ))}
+                      <div className="overflow-x-auto w-full rounded-2xl border border-slate-100 bg-white">
+                        <table className="w-full min-w-[1250px] border-collapse text-left">
+                          <thead>
+                            <tr className="border-b border-slate-100 text-slate-400 text-[10px] font-bold uppercase tracking-wider bg-slate-50/50">
+                              <th className="py-3 px-4 font-semibold w-16 text-center">Pos</th>
+                              <th className="py-3 px-4 font-semibold">Consultor</th>
+                              <th className="py-3 px-4 font-semibold">Hub</th>
+                              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                                <th 
+                                  key={day} 
+                                  className={cn(
+                                    "py-3 px-1 font-semibold text-center text-[9px] min-w-[28px] transition-colors duration-300 border-l border-slate-100/50",
+                                    day === todayDay && "text-emerald-600 bg-emerald-50/60 font-black ring-1 ring-emerald-500/20"
+                                  )}
+                                >
+                                  {day}
+                                </th>
+                              ))}
+                              <th className="py-3 px-4 font-semibold text-center w-24">Total</th>
+                              <th className="py-3 px-4 font-semibold text-center w-28">Status</th>
+                              <th className="py-3 px-4 font-semibold text-right w-20">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {data.presencial.ranking.map((consultant) => (
+                              <tr 
+                                key={consultant.id}
+                                onClick={() => handleConsultantClick(consultant)}
+                                className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
+                              >
+                                <td className="py-4 px-4 text-center">
+                                  <span className={cn(
+                                    "inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-extrabold",
+                                    consultant.rank === 1 ? "bg-amber-100 text-amber-800 ring-2 ring-amber-300" :
+                                    consultant.rank === 2 ? "bg-slate-200 text-slate-800 ring-2 ring-slate-300" :
+                                    consultant.rank === 3 ? "bg-orange-100 text-orange-800 ring-2 ring-orange-200" :
+                                    "bg-slate-100/50 text-slate-500"
+                                  )}>
+                                    {consultant.rank}º
+                                  </span>
+                                </td>
+                                <td className="py-4 px-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-9 w-9 rounded-full bg-emerald-50 flex items-center justify-center font-bold text-xs text-emerald-800 border border-emerald-100/30">
+                                      {consultant.avatar}
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-bold text-slate-800 group-hover:text-emerald-700 transition-colors">
+                                        {consultant.name}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-4 text-xs font-semibold text-slate-500">
+                                  <span className="flex items-center gap-1">
+                                    <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                                    {consultant.region}
+                                  </span>
+                                </td>
+                                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                                  <td 
+                                    key={day} 
+                                    className={cn(
+                                      "py-4 px-1 text-center font-semibold text-[11px] transition-colors duration-300 border-l border-slate-50",
+                                      day === todayDay ? "bg-emerald-50/20 text-emerald-700 font-bold" : "text-slate-500"
+                                    )}
+                                  >
+                                    {consultant.dailySales?.[day] ?? 0}
+                                  </td>
+                                ))}
+                                <td className="py-4 px-4 text-center">
+                                  <span className="text-xs font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100/50">
+                                    {consultant.sales}
+                                  </span>
+                                </td>
+                                <td className="py-4 px-4 text-center">
+                                  {consultant.status === 'active' ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/50">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                      Ativo
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/50">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                                      Férias
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-4 px-4 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <div className={cn(
+                                      "p-1.5 rounded-lg border",
+                                      consultant.trend === 'up' ? "bg-emerald-50 text-emerald-600 border-emerald-100/50" :
+                                      consultant.trend === 'down' ? "bg-red-50 text-red-600 border-red-100/50" :
+                                      "bg-slate-50 text-slate-400 border-slate-100"
+                                    )}>
+                                      {consultant.trend === 'up' && <TrendingUp className="h-3.5 w-3.5" />}
+                                      {consultant.trend === 'down' && <TrendingDown className="h-3.5 w-3.5" />}
+                                      {consultant.trend === 'stable' && <Minus className="h-3.5 w-3.5" />}
+                                    </div>
+                                    <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-slate-500 transition-transform group-hover:translate-x-0.5" />
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </CardContent>
@@ -353,69 +415,129 @@ function DashboardContent() {
                     </div>
                   </div>
 
-                  <CardContent className="p-6 flex flex-col lg:flex-row gap-12 items-center justify-between flex-1">
-                    {/* Left: 3D Podium */}
-                    <div className="w-full lg:w-[45%] flex items-center justify-center pb-6 lg:pb-0 lg:pr-6">
-                      <Podium3D 
-                        consultants={data.ead.ranking.slice(0, 3)} 
-                        theme="orange"
-                        onConsultantClick={handleConsultantClick}
-                      />
-                    </div>
+                  <CardContent className="p-6 flex flex-col gap-6 flex-1 w-full">
+                    <div className="w-full space-y-4">
+                      <div className="flex flex-wrap gap-4 items-center justify-between text-xs font-bold text-slate-500">
+                        <p className="uppercase tracking-wider">Quadro Classificatório - EAD</p>
+                        <div className="flex gap-3 text-[11px]">
+                          <span className="flex items-center gap-1 bg-orange-50 text-orange-700 px-2.5 py-1 rounded-full border border-orange-100/50">
+                            <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+                            {data.ead.ranking.filter(c => c.status === 'active').length} Ativos
+                          </span>
+                          <span className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-100/50">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                            {data.ead.ranking.filter(c => c.status === 'vacation').length} Férias
+                          </span>
+                        </div>
+                      </div>
 
-                    {/* Right: Spacious Classificatory Table */}
-                    <div className="w-full lg:w-[50%] space-y-4">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Quadro Classificatório - EAD</p>
-                      <div className="space-y-3 pr-1">
-                        {data.ead.ranking.filter(consultant => consultant.sales > 0).slice(0, 5).map((consultant) => (
-                          <div 
-                            key={consultant.id}
-                            onClick={() => handleConsultantClick(consultant)}
-                            className="group flex items-center justify-between p-4 rounded-2xl bg-white hover:bg-slate-50/80 border border-slate-100 hover:border-slate-200/60 shadow-2xs hover:shadow-xs cursor-pointer transition-all duration-300"
-                          >
-                            <div className="flex items-center gap-4">
-                              {/* Rank Pos */}
-                              <span className={cn(
-                                "w-6 text-center text-base font-extrabold",
-                                consultant.rank <= 3 ? "text-orange-600" : "text-slate-400"
-                              )}>
-                                {consultant.rank}º
-                              </span>
-                              {/* Avatar */}
-                              <div className="h-10 w-10 rounded-full bg-orange-50 flex items-center justify-center font-bold text-sm text-orange-800 border border-orange-100/50">
-                                {consultant.avatar}
-                              </div>
-                              {/* Consultant Name & Hub */}
-                              <div>
-                                <p className="text-base font-bold text-slate-800 group-hover:text-orange-700 transition-colors">
-                                  {consultant.name}
-                                </p>
-                                <p className="text-[11px] text-slate-400 font-bold flex items-center gap-1 mt-0.5">
-                                  <MapPin className="h-3 w-3" />
-                                  Hub: {consultant.region}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-6">
-                              <div className="text-right">
-                                <p className="text-base font-extrabold text-slate-900">{consultant.sales} matrículas</p>
-                              </div>
-
-                              <div className={cn(
-                                "p-2 rounded-xl border",
-                                consultant.trend === 'up' ? "bg-orange-50 text-orange-600 border-orange-100/50" :
-                                consultant.trend === 'down' ? "bg-red-50 text-red-600 border-red-100/50" :
-                                "bg-slate-50 text-slate-400 border-slate-100"
-                              )}>
-                                {consultant.trend === 'up' && <TrendingUp className="h-4.5 w-4.5" />}
-                                {consultant.trend === 'down' && <TrendingDown className="h-4.5 w-4.5" />}
-                                {consultant.trend === 'stable' && <Minus className="h-4.5 w-4.5" />}
-                              </div>
-                              <ChevronRight className="h-4.5 w-4.5 text-slate-300 group-hover:text-slate-500 transition-transform group-hover:translate-x-0.5" />
-                            </div>
-                          </div>
-                        ))}
+                      <div className="overflow-x-auto w-full rounded-2xl border border-slate-100 bg-white">
+                        <table className="w-full min-w-[1250px] border-collapse text-left">
+                          <thead>
+                            <tr className="border-b border-slate-100 text-slate-400 text-[10px] font-bold uppercase tracking-wider bg-slate-50/50">
+                              <th className="py-3 px-4 font-semibold w-16 text-center">Pos</th>
+                              <th className="py-3 px-4 font-semibold">Consultor</th>
+                              <th className="py-3 px-4 font-semibold">Hub</th>
+                              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                                <th 
+                                  key={day} 
+                                  className={cn(
+                                    "py-3 px-1 font-semibold text-center text-[9px] min-w-[28px] transition-colors duration-300 border-l border-slate-100/50",
+                                    day === todayDay && "text-orange-600 bg-orange-50/60 font-black ring-1 ring-orange-500/20"
+                                  )}
+                                >
+                                  {day}
+                                </th>
+                              ))}
+                              <th className="py-3 px-4 font-semibold text-center w-24">Total</th>
+                              <th className="py-3 px-4 font-semibold text-center w-28">Status</th>
+                              <th className="py-3 px-4 font-semibold text-right w-20">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {data.ead.ranking.map((consultant) => (
+                              <tr 
+                                key={consultant.id}
+                                onClick={() => handleConsultantClick(consultant)}
+                                className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
+                              >
+                                <td className="py-4 px-4 text-center">
+                                  <span className={cn(
+                                    "inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-extrabold",
+                                    consultant.rank === 1 ? "bg-amber-100 text-amber-800 ring-2 ring-amber-300" :
+                                    consultant.rank === 2 ? "bg-slate-200 text-slate-800 ring-2 ring-slate-300" :
+                                    consultant.rank === 3 ? "bg-orange-100 text-orange-800 ring-2 ring-orange-200" :
+                                    "bg-slate-100/50 text-slate-500"
+                                  )}>
+                                    {consultant.rank}º
+                                  </span>
+                                </td>
+                                <td className="py-4 px-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-9 w-9 rounded-full bg-orange-50 flex items-center justify-center font-bold text-xs text-orange-800 border border-orange-100/30">
+                                      {consultant.avatar}
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-bold text-slate-800 group-hover:text-orange-700 transition-colors">
+                                        {consultant.name}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-4 text-xs font-semibold text-slate-500">
+                                  <span className="flex items-center gap-1">
+                                    <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                                    {consultant.region}
+                                  </span>
+                                </td>
+                                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                                  <td 
+                                    key={day} 
+                                    className={cn(
+                                      "py-4 px-1 text-center font-semibold text-[11px] transition-colors duration-300 border-l border-slate-50",
+                                      day === todayDay ? "bg-orange-50/20 text-orange-700 font-bold" : "text-slate-500"
+                                    )}
+                                  >
+                                    {consultant.dailySales?.[day] ?? 0}
+                                  </td>
+                                ))}
+                                <td className="py-4 px-4 text-center">
+                                  <span className="text-xs font-extrabold text-orange-700 bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-100/50">
+                                    {consultant.sales}
+                                  </span>
+                                </td>
+                                <td className="py-4 px-4 text-center">
+                                  {consultant.status === 'active' ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/50">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                      Ativo
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/50">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                                      Férias
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-4 px-4 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <div className={cn(
+                                      "p-1.5 rounded-lg border",
+                                      consultant.trend === 'up' ? "bg-orange-50 text-orange-600 border-orange-100/50" :
+                                      consultant.trend === 'down' ? "bg-red-50 text-red-600 border-red-100/50" :
+                                      "bg-slate-50 text-slate-400 border-slate-100"
+                                    )}>
+                                      {consultant.trend === 'up' && <TrendingUp className="h-3.5 w-3.5" />}
+                                      {consultant.trend === 'down' && <TrendingDown className="h-3.5 w-3.5" />}
+                                      {consultant.trend === 'stable' && <Minus className="h-3.5 w-3.5" />}
+                                    </div>
+                                    <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-slate-500 transition-transform group-hover:translate-x-0.5" />
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </CardContent>
@@ -569,7 +691,8 @@ function AdminContent() {
     }
 
     if (agent) {
-      agent.sales = Math.max(0, agent.sales + delta);
+      const targetSales = Math.max(0, agent.sales + delta);
+      adjustDailySales(agent, targetSales);
       saveDashboardData(newData);
       setLocalData(newData);
       queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
@@ -588,7 +711,24 @@ function AdminContent() {
     }
 
     if (agent) {
-      agent.sales = sales;
+      adjustDailySales(agent, sales);
+      saveDashboardData(newData);
+      setLocalData(newData);
+      queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+    }
+  };
+
+  const handleStatusChange = (id: number, newStatus: 'active' | 'vacation') => {
+    if (!localData) return;
+    const newData = JSON.parse(JSON.stringify(localData)) as DashboardData;
+    
+    let agent = newData.presencial.ranking.find(a => a.id === id);
+    if (!agent) {
+      agent = newData.ead.ranking.find(a => a.id === id);
+    }
+
+    if (agent) {
+      agent.status = newStatus;
       saveDashboardData(newData);
       setLocalData(newData);
       queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
@@ -846,6 +986,19 @@ function AdminContent() {
 
                   {/* Editors */}
                   <div className="flex items-center gap-2">
+                    {/* Status Toggle */}
+                    <button
+                      onClick={() => handleStatusChange(consultant.id, consultant.status === 'active' ? 'vacation' : 'active')}
+                      className={cn(
+                        "px-2 py-1 rounded-lg font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer active:scale-95 mr-1.5",
+                        consultant.status === 'active'
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200/50 hover:bg-emerald-100/70"
+                          : "bg-amber-50 text-amber-700 border border-amber-200/50 hover:bg-amber-100/70"
+                      )}
+                    >
+                      {consultant.status === 'active' ? 'Ativo' : 'Férias'}
+                    </button>
+
                     <button
                       onClick={() => handleUpdateSales(consultant.id, -5)}
                       className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-extrabold text-xs transition cursor-pointer"
@@ -927,6 +1080,19 @@ function AdminContent() {
 
                   {/* Editors */}
                   <div className="flex items-center gap-2">
+                    {/* Status Toggle */}
+                    <button
+                      onClick={() => handleStatusChange(consultant.id, consultant.status === 'active' ? 'vacation' : 'active')}
+                      className={cn(
+                        "px-2 py-1 rounded-lg font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer active:scale-95 mr-1.5",
+                        consultant.status === 'active'
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200/50 hover:bg-emerald-100/70"
+                          : "bg-amber-50 text-amber-700 border border-amber-200/50 hover:bg-amber-100/70"
+                      )}
+                    >
+                      {consultant.status === 'active' ? 'Ativo' : 'Férias'}
+                    </button>
+
                     <button
                       onClick={() => handleUpdateSales(consultant.id, -5)}
                       className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-extrabold text-xs transition cursor-pointer"

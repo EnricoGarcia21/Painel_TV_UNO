@@ -279,7 +279,7 @@ function DashboardContent() {
                     <div className="w-full lg:w-[50%] space-y-4">
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Quadro Classificatório - Presencial</p>
                       <div className="space-y-3 pr-1">
-                        {data.presencial.ranking.map((consultant) => (
+                        {data.presencial.ranking.filter(consultant => consultant.sales > 0).slice(0, 5).map((consultant) => (
                           <div 
                             key={consultant.id}
                             onClick={() => handleConsultantClick(consultant)}
@@ -367,7 +367,7 @@ function DashboardContent() {
                     <div className="w-full lg:w-[50%] space-y-4">
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Quadro Classificatório - EAD</p>
                       <div className="space-y-3 pr-1">
-                        {data.ead.ranking.map((consultant) => (
+                        {data.ead.ranking.filter(consultant => consultant.sales > 0).slice(0, 5).map((consultant) => (
                           <div 
                             key={consultant.id}
                             onClick={() => handleConsultantClick(consultant)}

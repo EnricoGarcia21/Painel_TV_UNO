@@ -49,13 +49,101 @@ function DashboardContent() {
   const [time, setTime] = useState(new Date());
   const [selectedConsultant, setSelectedConsultant] = useState<Consultant | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  
-  const todayDay = time.getDate(); // 1 to 31
+
+  // Fetch data using React Query (auto-updates every 10 seconds to simulate real-time operations)
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['dashboardData'],
+    queryFn: fetchDashboardData,
+    refetchInterval: 10000, // Refetch every 10 seconds
+  });
   
   // Carousel states
   const [activeTab, setActiveTab] = useState<'presencial' | 'ead'>('presencial');
   const [timerProgress, setTimerProgress] = useState(0);
   const lastSwitchTimeRef = useRef(Date.now());
+
+  const todayDay = time.getDate(); // 1 to 31
+
+  // Dynamic calculations for current month weekdays (removing Sat/Sun)
+  const year = time.getFullYear();
+  const month = time.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const weekdays = Array.from({ length: daysInMonth }, (_, i) => i + 1).filter((day) => {
+    const date = new Date(year, month, day);
+    const dayOfWeek = date.getDay();
+    return dayOfWeek !== 0 && dayOfWeek !== 6; // exclude Sun (0) and Sat (6)
+  });
+
+  const presencialScrollRef = useRef<HTMLDivElement | null>(null);
+  const eadScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollPosRef = useRef(0);
+  const isPausedRef = useRef(false);
+
+  // Auto-scroll loop for active tab listing (Presencial or EAD)
+  useEffect(() => {
+    // Reset scroll when tab changes
+    scrollPosRef.current = 0;
+    isPausedRef.current = false;
+
+    const initialContainer = activeTab === 'presencial' ? presencialScrollRef.current : eadScrollRef.current;
+    if (initialContainer) {
+      initialContainer.scrollTop = 0;
+    }
+
+    let animationFrameId: number;
+    const scrollSpeed = 0.85; // slightly faster scroll speed for premium TV feel
+
+    const scroll = () => {
+      const container = activeTab === 'presencial' ? presencialScrollRef.current : eadScrollRef.current;
+      if (!container) {
+        animationFrameId = requestAnimationFrame(scroll);
+        return;
+      }
+      
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      
+      if (isPausedRef.current) {
+        animationFrameId = requestAnimationFrame(scroll);
+        return;
+      }
+
+      if (maxScroll <= 0) {
+        animationFrameId = requestAnimationFrame(scroll);
+        return;
+      }
+
+      scrollPosRef.current += scrollSpeed;
+
+      if (scrollPosRef.current >= maxScroll) {
+        scrollPosRef.current = maxScroll;
+        container.scrollTop = Math.round(scrollPosRef.current);
+        isPausedRef.current = true;
+        
+        // Pause at the bottom for 3s, then return to the first item
+        setTimeout(() => {
+          scrollPosRef.current = 0;
+          const containerRef = activeTab === 'presencial' ? presencialScrollRef.current : eadScrollRef.current;
+          if (containerRef) {
+            containerRef.scrollTop = 0;
+          }
+          isPausedRef.current = false;
+        }, 3000);
+      } else {
+        container.scrollTop = Math.round(scrollPosRef.current);
+      }
+
+      animationFrameId = requestAnimationFrame(scroll);
+    };
+
+    const startDelay = setTimeout(() => {
+      animationFrameId = requestAnimationFrame(scroll);
+    }, 2500); // pause at the top for 2.5s before starting
+
+    return () => {
+      clearTimeout(startDelay);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [activeTab, isLoading]);
 
   // Live real-time clock
   useEffect(() => {
@@ -86,13 +174,6 @@ function DashboardContent() {
     lastSwitchTimeRef.current = Date.now();
     setTimerProgress(0);
   };
-
-  // Fetch data using React Query (auto-updates every 10 seconds to simulate real-time operations)
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['dashboardData'],
-    queryFn: fetchDashboardData,
-    refetchInterval: 10000, // Refetch every 10 seconds
-  });
 
   const handleConsultantClick = (consultant: Consultant) => {
     setSelectedConsultant(consultant);
@@ -270,40 +351,43 @@ function DashboardContent() {
                   <CardContent className="p-6 flex flex-col gap-6 flex-1 w-full">
                     <div className="w-full space-y-4">
                       <div className="flex flex-wrap gap-4 items-center justify-between text-xs font-bold text-slate-500">
-                        <p className="uppercase tracking-wider">Quadro Classificatório - Presencial</p>
-                        <div className="flex gap-3 text-[11px]">
-                          <span className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-100/50">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <p className="uppercase tracking-wider text-sm font-extrabold text-slate-700">Quadro Classificatório - Presencial</p>
+                        <div className="flex gap-3 text-xs">
+                          <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 px-3.5 py-1.5 rounded-full border border-emerald-200/50 font-extrabold shadow-2xs">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
                             {data.presencial.ranking.filter(c => c.status === 'active').length} Ativos
                           </span>
-                          <span className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-100/50">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                          <span className="flex items-center gap-1.5 bg-amber-50 text-amber-800 px-3.5 py-1.5 rounded-full border border-amber-200/50 font-extrabold shadow-2xs">
+                            <span className="h-2 w-2 rounded-full bg-amber-400"></span>
                             {data.presencial.ranking.filter(c => c.status === 'vacation').length} Férias
                           </span>
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto w-full rounded-2xl border border-slate-100 bg-white">
-                        <table className="w-full min-w-[1250px] border-collapse text-left">
-                          <thead>
-                            <tr className="border-b border-slate-100 text-slate-400 text-[10px] font-bold uppercase tracking-wider bg-slate-50/50">
-                              <th className="py-3 px-4 font-semibold w-16 text-center">Pos</th>
-                              <th className="py-3 px-4 font-semibold">Consultor</th>
-                              <th className="py-3 px-4 font-semibold">Hub</th>
-                              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                      <div 
+                        ref={presencialScrollRef}
+                        className="overflow-x-auto overflow-y-auto w-full max-h-[520px] rounded-2xl border border-slate-100 bg-white shadow-sm scrollbar-thin"
+                      >
+                        <table className="w-full min-w-[1400px] border-collapse text-left">
+                          <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-100 shadow-3xs">
+                            <tr className="text-slate-500 text-xs font-black uppercase tracking-wider">
+                              <th className="py-4 px-4 font-black w-20 text-center">Pos</th>
+                              <th className="py-4 px-4 font-black">Consultor</th>
+                              <th className="py-4 px-4 font-black w-36">Hub</th>
+                              {weekdays.map((day) => (
                                 <th 
                                   key={day} 
                                   className={cn(
-                                    "py-3 px-1 font-semibold text-center text-[9px] min-w-[28px] transition-colors duration-300 border-l border-slate-100/50",
-                                    day === todayDay && "text-emerald-600 bg-emerald-50/60 font-black ring-1 ring-emerald-500/20"
+                                    "py-4 px-1.5 font-black text-center text-xs min-w-[36px] transition-colors duration-300 border-l border-slate-200/60",
+                                    day === todayDay && "text-emerald-700 bg-emerald-100/50 font-black ring-1 ring-emerald-500/20"
                                   )}
                                 >
                                   {day}
                                 </th>
                               ))}
-                              <th className="py-3 px-4 font-semibold text-center w-24">Total</th>
-                              <th className="py-3 px-4 font-semibold text-center w-28">Status</th>
-                              <th className="py-3 px-4 font-semibold text-right w-20">Ações</th>
+                              <th className="py-4 px-4 font-black text-center w-28">Total</th>
+                              <th className="py-4 px-4 font-black text-center w-32">Status</th>
+                              <th className="py-4 px-4 font-black text-right w-24">Ações</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -315,75 +399,75 @@ function DashboardContent() {
                               >
                                 <td className="py-4 px-4 text-center">
                                   <span className={cn(
-                                    "inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-extrabold",
-                                    consultant.rank === 1 ? "bg-amber-100 text-amber-800 ring-2 ring-amber-300" :
-                                    consultant.rank === 2 ? "bg-slate-200 text-slate-800 ring-2 ring-slate-300" :
-                                    consultant.rank === 3 ? "bg-orange-100 text-orange-800 ring-2 ring-orange-200" :
-                                    "bg-slate-100/50 text-slate-500"
+                                    "inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-black",
+                                    consultant.rank === 1 ? "bg-amber-100 text-amber-900 ring-2 ring-amber-400/80 shadow-xs" :
+                                    consultant.rank === 2 ? "bg-slate-200 text-slate-900 ring-2 ring-slate-400/80 shadow-xs" :
+                                    consultant.rank === 3 ? "bg-orange-100 text-orange-900 ring-2 ring-orange-400/80 shadow-xs" :
+                                    "bg-slate-100/70 text-slate-600 border border-slate-200/30"
                                   )}>
                                     {consultant.rank}º
                                   </span>
                                 </td>
                                 <td className="py-4 px-4">
-                                  <div className="flex items-center gap-3">
-                                    <div className="h-9 w-9 rounded-full bg-emerald-50 flex items-center justify-center font-bold text-xs text-emerald-800 border border-emerald-100/30">
+                                  <div className="flex items-center gap-3.5">
+                                    <div className="h-11 w-11 rounded-full bg-emerald-50 flex items-center justify-center font-bold text-sm text-emerald-800 border-2 border-emerald-100/60 shadow-3xs">
                                       {consultant.avatar}
                                     </div>
                                     <div>
-                                      <p className="text-sm font-bold text-slate-800 group-hover:text-emerald-700 transition-colors">
+                                      <p className="text-base font-black text-slate-900 group-hover:text-emerald-700 transition-colors tracking-tight">
                                         {consultant.name}
                                       </p>
                                     </div>
                                   </div>
                                 </td>
-                                <td className="py-4 px-4 text-xs font-semibold text-slate-500">
-                                  <span className="flex items-center gap-1">
-                                    <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                                <td className="py-4 px-4 text-sm font-bold text-slate-600">
+                                  <span className="flex items-center gap-1.5">
+                                    <MapPin className="h-4.5 w-4.5 text-slate-400" />
                                     {consultant.region}
                                   </span>
                                 </td>
-                                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                                {weekdays.map((day) => (
                                   <td 
                                     key={day} 
                                     className={cn(
-                                      "py-4 px-1 text-center font-semibold text-[11px] transition-colors duration-300 border-l border-slate-50",
-                                      day === todayDay ? "bg-emerald-50/20 text-emerald-700 font-bold" : "text-slate-500"
+                                      "py-4 px-1.5 text-center font-black text-sm transition-colors duration-300 border-l border-slate-100",
+                                      day === todayDay ? "bg-emerald-50/40 text-emerald-800 font-black" : "text-slate-600"
                                     )}
                                   >
                                     {consultant.dailySales?.[day] ?? 0}
                                   </td>
                                 ))}
                                 <td className="py-4 px-4 text-center">
-                                  <span className="text-xs font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100/50">
+                                  <span className="text-sm font-black text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200/50 shadow-3xs">
                                     {consultant.sales}
                                   </span>
                                 </td>
                                 <td className="py-4 px-4 text-center">
                                   {consultant.status === 'active' ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/50">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/50 shadow-3xs">
+                                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
                                       Ativo
                                     </span>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/50">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 border border-amber-200/50 shadow-3xs">
+                                      <span className="h-2 w-2 rounded-full bg-amber-400"></span>
                                       Férias
                                     </span>
                                   )}
                                 </td>
                                 <td className="py-4 px-4 text-right">
-                                  <div className="flex items-center justify-end gap-2">
+                                  <div className="flex items-center justify-end gap-2.5">
                                     <div className={cn(
-                                      "p-1.5 rounded-lg border",
+                                      "p-2 rounded-xl border shadow-3xs",
                                       consultant.trend === 'up' ? "bg-emerald-50 text-emerald-600 border-emerald-100/50" :
                                       consultant.trend === 'down' ? "bg-red-50 text-red-600 border-red-100/50" :
                                       "bg-slate-50 text-slate-400 border-slate-100"
                                     )}>
-                                      {consultant.trend === 'up' && <TrendingUp className="h-3.5 w-3.5" />}
-                                      {consultant.trend === 'down' && <TrendingDown className="h-3.5 w-3.5" />}
-                                      {consultant.trend === 'stable' && <Minus className="h-3.5 w-3.5" />}
+                                      {consultant.trend === 'up' && <TrendingUp className="h-4.5 w-4.5" />}
+                                      {consultant.trend === 'down' && <TrendingDown className="h-4.5 w-4.5" />}
+                                      {consultant.trend === 'stable' && <Minus className="h-4.5 w-4.5" />}
                                     </div>
-                                    <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-slate-500 transition-transform group-hover:translate-x-0.5" />
+                                    <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-slate-500 transition-transform group-hover:translate-x-0.5" />
                                   </div>
                                 </td>
                               </tr>
@@ -418,40 +502,43 @@ function DashboardContent() {
                   <CardContent className="p-6 flex flex-col gap-6 flex-1 w-full">
                     <div className="w-full space-y-4">
                       <div className="flex flex-wrap gap-4 items-center justify-between text-xs font-bold text-slate-500">
-                        <p className="uppercase tracking-wider">Quadro Classificatório - EAD</p>
-                        <div className="flex gap-3 text-[11px]">
-                          <span className="flex items-center gap-1 bg-orange-50 text-orange-700 px-2.5 py-1 rounded-full border border-orange-100/50">
-                            <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+                        <p className="uppercase tracking-wider text-sm font-extrabold text-slate-700">Quadro Classificatório - EAD</p>
+                        <div className="flex gap-3 text-xs">
+                          <span className="flex items-center gap-1.5 bg-orange-50 text-orange-800 px-3.5 py-1.5 rounded-full border border-orange-200/50 font-extrabold shadow-2xs">
+                            <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse"></span>
                             {data.ead.ranking.filter(c => c.status === 'active').length} Ativos
                           </span>
-                          <span className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-100/50">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                          <span className="flex items-center gap-1.5 bg-amber-50 text-amber-800 px-3.5 py-1.5 rounded-full border border-amber-200/50 font-extrabold shadow-2xs">
+                            <span className="h-2 w-2 rounded-full bg-amber-400"></span>
                             {data.ead.ranking.filter(c => c.status === 'vacation').length} Férias
                           </span>
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto w-full rounded-2xl border border-slate-100 bg-white">
-                        <table className="w-full min-w-[1250px] border-collapse text-left">
-                          <thead>
-                            <tr className="border-b border-slate-100 text-slate-400 text-[10px] font-bold uppercase tracking-wider bg-slate-50/50">
-                              <th className="py-3 px-4 font-semibold w-16 text-center">Pos</th>
-                              <th className="py-3 px-4 font-semibold">Consultor</th>
-                              <th className="py-3 px-4 font-semibold">Hub</th>
-                              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                      <div 
+                        ref={eadScrollRef}
+                        className="overflow-x-auto overflow-y-auto w-full max-h-[520px] rounded-2xl border border-slate-100 bg-white shadow-sm scrollbar-thin"
+                      >
+                        <table className="w-full min-w-[1400px] border-collapse text-left">
+                          <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-100 shadow-3xs">
+                            <tr className="text-slate-500 text-xs font-black uppercase tracking-wider">
+                              <th className="py-4 px-4 font-black w-20 text-center">Pos</th>
+                              <th className="py-4 px-4 font-black">Consultor</th>
+                              <th className="py-4 px-4 font-black w-36">Hub</th>
+                              {weekdays.map((day) => (
                                 <th 
                                   key={day} 
                                   className={cn(
-                                    "py-3 px-1 font-semibold text-center text-[9px] min-w-[28px] transition-colors duration-300 border-l border-slate-100/50",
-                                    day === todayDay && "text-orange-600 bg-orange-50/60 font-black ring-1 ring-orange-500/20"
+                                    "py-4 px-1.5 font-black text-center text-xs min-w-[36px] transition-colors duration-300 border-l border-slate-200/60",
+                                    day === todayDay && "text-orange-700 bg-orange-100/50 font-black ring-1 ring-orange-500/20"
                                   )}
                                 >
                                   {day}
                                 </th>
                               ))}
-                              <th className="py-3 px-4 font-semibold text-center w-24">Total</th>
-                              <th className="py-3 px-4 font-semibold text-center w-28">Status</th>
-                              <th className="py-3 px-4 font-semibold text-right w-20">Ações</th>
+                              <th className="py-4 px-4 font-black text-center w-28">Total</th>
+                              <th className="py-4 px-4 font-black text-center w-32">Status</th>
+                              <th className="py-4 px-4 font-black text-right w-24">Ações</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -463,75 +550,75 @@ function DashboardContent() {
                               >
                                 <td className="py-4 px-4 text-center">
                                   <span className={cn(
-                                    "inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-extrabold",
-                                    consultant.rank === 1 ? "bg-amber-100 text-amber-800 ring-2 ring-amber-300" :
-                                    consultant.rank === 2 ? "bg-slate-200 text-slate-800 ring-2 ring-slate-300" :
-                                    consultant.rank === 3 ? "bg-orange-100 text-orange-800 ring-2 ring-orange-200" :
-                                    "bg-slate-100/50 text-slate-500"
+                                    "inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-black",
+                                    consultant.rank === 1 ? "bg-amber-100 text-amber-900 ring-2 ring-amber-400/80 shadow-xs" :
+                                    consultant.rank === 2 ? "bg-slate-200 text-slate-900 ring-2 ring-slate-400/80 shadow-xs" :
+                                    consultant.rank === 3 ? "bg-orange-100 text-orange-900 ring-2 ring-orange-400/80 shadow-xs" :
+                                    "bg-slate-100/70 text-slate-600 border border-slate-200/30"
                                   )}>
                                     {consultant.rank}º
                                   </span>
                                 </td>
                                 <td className="py-4 px-4">
-                                  <div className="flex items-center gap-3">
-                                    <div className="h-9 w-9 rounded-full bg-orange-50 flex items-center justify-center font-bold text-xs text-orange-800 border border-orange-100/30">
+                                  <div className="flex items-center gap-3.5">
+                                    <div className="h-11 w-11 rounded-full bg-orange-50 flex items-center justify-center font-bold text-sm text-orange-800 border-2 border-orange-100/60 shadow-3xs">
                                       {consultant.avatar}
                                     </div>
                                     <div>
-                                      <p className="text-sm font-bold text-slate-800 group-hover:text-orange-700 transition-colors">
+                                      <p className="text-base font-black text-slate-900 group-hover:text-orange-700 transition-colors tracking-tight">
                                         {consultant.name}
                                       </p>
                                     </div>
                                   </div>
                                 </td>
-                                <td className="py-4 px-4 text-xs font-semibold text-slate-500">
-                                  <span className="flex items-center gap-1">
-                                    <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                                <td className="py-4 px-4 text-sm font-bold text-slate-600">
+                                  <span className="flex items-center gap-1.5">
+                                    <MapPin className="h-4.5 w-4.5 text-slate-400" />
                                     {consultant.region}
                                   </span>
                                 </td>
-                                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                                {weekdays.map((day) => (
                                   <td 
                                     key={day} 
                                     className={cn(
-                                      "py-4 px-1 text-center font-semibold text-[11px] transition-colors duration-300 border-l border-slate-50",
-                                      day === todayDay ? "bg-orange-50/20 text-orange-700 font-bold" : "text-slate-500"
+                                      "py-4 px-1.5 text-center font-black text-sm transition-colors duration-300 border-l border-slate-100",
+                                      day === todayDay ? "bg-orange-50/40 text-orange-800 font-black" : "text-slate-600"
                                     )}
                                   >
                                     {consultant.dailySales?.[day] ?? 0}
                                   </td>
                                 ))}
                                 <td className="py-4 px-4 text-center">
-                                  <span className="text-xs font-extrabold text-orange-700 bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-100/50">
+                                  <span className="text-sm font-black text-orange-800 bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-200/50 shadow-3xs">
                                     {consultant.sales}
                                   </span>
                                 </td>
                                 <td className="py-4 px-4 text-center">
                                   {consultant.status === 'active' ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/50">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/50 shadow-3xs">
+                                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
                                       Ativo
                                     </span>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/50">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 border border-amber-200/50 shadow-3xs">
+                                      <span className="h-2 w-2 rounded-full bg-amber-400"></span>
                                       Férias
                                     </span>
                                   )}
                                 </td>
                                 <td className="py-4 px-4 text-right">
-                                  <div className="flex items-center justify-end gap-2">
+                                  <div className="flex items-center justify-end gap-2.5">
                                     <div className={cn(
-                                      "p-1.5 rounded-lg border",
+                                      "p-2 rounded-xl border shadow-3xs",
                                       consultant.trend === 'up' ? "bg-orange-50 text-orange-600 border-orange-100/50" :
                                       consultant.trend === 'down' ? "bg-red-50 text-red-600 border-red-100/50" :
                                       "bg-slate-50 text-slate-400 border-slate-100"
                                     )}>
-                                      {consultant.trend === 'up' && <TrendingUp className="h-3.5 w-3.5" />}
-                                      {consultant.trend === 'down' && <TrendingDown className="h-3.5 w-3.5" />}
-                                      {consultant.trend === 'stable' && <Minus className="h-3.5 w-3.5" />}
+                                      {consultant.trend === 'up' && <TrendingUp className="h-4.5 w-4.5" />}
+                                      {consultant.trend === 'down' && <TrendingDown className="h-4.5 w-4.5" />}
+                                      {consultant.trend === 'stable' && <Minus className="h-4.5 w-4.5" />}
                                     </div>
-                                    <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-slate-500 transition-transform group-hover:translate-x-0.5" />
+                                    <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-slate-500 transition-transform group-hover:translate-x-0.5" />
                                   </div>
                                 </td>
                               </tr>
@@ -672,6 +759,52 @@ function AdminContent() {
   const [announceAuthor, setAnnounceAuthor] = useState('');
   const [announceType, setAnnounceType] = useState<'info' | 'warning' | 'success' | 'alert'>('info');
   const [announceDate, setAnnounceDate] = useState('');
+
+  // Daily Sales Edit State
+  const [editingDailyAgent, setEditingDailyAgent] = useState<Consultant | null>(null);
+  const [tempDailySales, setTempDailySales] = useState<{ [key: number]: number }>({});
+
+  // Dynamic calculations for current month weekdays (removing Sat/Sun)
+  const year = time.getFullYear();
+  const month = time.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const weekdays = Array.from({ length: daysInMonth }, (_, i) => i + 1).filter((day) => {
+    const date = new Date(year, month, day);
+    const dayOfWeek = date.getDay();
+    return dayOfWeek !== 0 && dayOfWeek !== 6; // exclude Sun (0) and Sat (6)
+  });
+
+  const handleOpenDailyEdit = (consultant: Consultant) => {
+    setEditingDailyAgent(consultant);
+    const sales: { [key: number]: number } = {};
+    for (let d = 1; d <= 31; d++) {
+      sales[d] = consultant.dailySales?.[d] ?? 0;
+    }
+    setTempDailySales(sales);
+  };
+
+  const handleSaveDailySales = () => {
+    if (!localData || !editingDailyAgent) return;
+    const newData = JSON.parse(JSON.stringify(localData)) as DashboardData;
+    
+    let agent = newData.presencial.ranking.find(a => a.id === editingDailyAgent.id);
+    if (!agent) {
+      agent = newData.ead.ranking.find(a => a.id === editingDailyAgent.id);
+    }
+    
+    if (agent) {
+      agent.dailySales = { ...tempDailySales };
+      // Recalculate total sales based on weekdays only
+      const total = weekdays.reduce((sum, day) => sum + (tempDailySales[day] || 0), 0);
+      agent.sales = total;
+      
+      saveDashboardData(newData);
+      setLocalData(newData);
+      queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+    }
+    
+    setEditingDailyAgent(null);
+  };
 
   useEffect(() => {
     if (data && !localData) {
@@ -1032,6 +1165,13 @@ function AdminContent() {
                     >
                       +5
                     </button>
+                    <button
+                      onClick={() => handleOpenDailyEdit(consultant)}
+                      className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-extrabold text-xs transition cursor-pointer active:scale-95 ml-1"
+                      title="Editar matrículas diárias"
+                    >
+                      <Calendar className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1125,6 +1265,13 @@ function AdminContent() {
                       className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-extrabold text-xs transition cursor-pointer"
                     >
                       +5
+                    </button>
+                    <button
+                      onClick={() => handleOpenDailyEdit(consultant)}
+                      className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-extrabold text-xs transition cursor-pointer active:scale-95 ml-1"
+                      title="Editar matrículas diárias"
+                    >
+                      <Calendar className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -1336,6 +1483,99 @@ function AdminContent() {
               </button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Daily Sales Editor Dialog */}
+      <Dialog open={!!editingDailyAgent} onOpenChange={(open) => !open && setEditingDailyAgent(null)}>
+        <DialogContent onClose={() => setEditingDailyAgent(null)} className="max-w-2xl border-slate-200">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold font-display text-slate-900">
+              Editar Matrículas Diárias: {editingDailyAgent?.name}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Gerencie a quantidade de matrículas efetuadas em cada dia útil do mês.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2 space-y-4">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-[360px] overflow-y-auto p-1 border border-slate-100 rounded-xl bg-slate-50/50 scrollbar-thin">
+              {weekdays.map((day) => {
+                const now = new Date();
+                const isToday = day === now.getDate() && month === now.getMonth() && year === now.getFullYear();
+                return (
+                  <div 
+                    key={day} 
+                    className={cn(
+                      "p-2.5 rounded-lg border bg-white flex flex-col items-center justify-between gap-1.5 shadow-2xs",
+                      isToday ? "border-indigo-300 bg-indigo-50/20 ring-1 ring-indigo-500/20" : "border-slate-100"
+                    )}
+                  >
+                    <span className={cn(
+                      "text-[10px] font-black uppercase tracking-wider",
+                      isToday ? "text-indigo-700" : "text-slate-400"
+                    )}>
+                      Dia {day}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTempDailySales(prev => ({
+                            ...prev,
+                            [day]: Math.max(0, (prev[day] || 0) - 1)
+                          }));
+                        }}
+                        className="w-5 h-5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs transition active:scale-90 cursor-pointer"
+                      >
+                        -
+                      </button>
+                      <span className="w-6 text-center text-xs font-black text-slate-800">
+                        {tempDailySales[day] ?? 0}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTempDailySales(prev => ({
+                            ...prev,
+                            [day]: (prev[day] || 0) + 1
+                          }));
+                        }}
+                        className="w-5 h-5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs transition active:scale-90 cursor-pointer"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Novo Total Sumarizado</p>
+                <p className="text-lg font-black text-indigo-700">
+                  {weekdays.reduce((sum, day) => sum + (tempDailySales[day] || 0), 0)} matrículas
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingDailyAgent(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveDailySales}
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition cursor-pointer shadow-sm active:scale-95"
+                >
+                  Salvar
+                </button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

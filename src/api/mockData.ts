@@ -62,10 +62,27 @@ const generateDailySales = (totalSales: number) => {
   for (let i = 1; i <= 31; i++) {
     result[i] = 0;
   }
-  let remaining = totalSales;
   
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const weekdays: number[] = [];
+  
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const dayOfWeek = date.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      weekdays.push(d);
+    }
+  }
+
+  if (weekdays.length === 0) return result;
+
+  let remaining = totalSales;
   while (remaining > 0) {
-    const day = Math.floor(Math.random() * 31) + 1;
+    const randomIndex = Math.floor(Math.random() * weekdays.length);
+    const day = weekdays[randomIndex];
     result[day] += 1;
     remaining -= 1;
   }
@@ -80,7 +97,16 @@ export const adjustDailySales = (consultant: Consultant, newSales: number) => {
     }
   }
   const diff = newSales - consultant.sales;
-  const todayDay = new Date().getDate(); // 1 to 31
+  const now = new Date();
+  let todayDay = now.getDate(); // 1 to 31
+  const dayOfWeek = now.getDay();
+  
+  // If weekend, backtrack to Friday
+  if (dayOfWeek === 6) {
+    todayDay = Math.max(1, todayDay - 1);
+  } else if (dayOfWeek === 0) {
+    todayDay = Math.max(1, todayDay - 2);
+  }
 
   if (diff > 0) {
     consultant.dailySales[todayDay] = (consultant.dailySales[todayDay] || 0) + diff;
@@ -208,6 +234,9 @@ const updateDynamicData = () => {
   if (!enabled) return;
 
   const now = new Date();
+  const dayOfWeek = now.getDay();
+  if (dayOfWeek === 0 || dayOfWeek === 6) return; // No simulated sales on Saturday and Sunday
+
   const isNewSale = Math.random() < 0.6;
   if (isNewSale) {
     const isEad = Math.random() > 0.4;

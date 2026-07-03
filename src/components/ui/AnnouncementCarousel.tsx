@@ -151,25 +151,25 @@ export const AnnouncementCarousel: React.FC<AnnouncementCarouselProps> = ({
             className="space-y-2"
           >
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-              <span className={cn("text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border shadow-2xs", currentStyles.badge)}>
+              <span className={cn("text-xs uppercase font-extrabold tracking-wider px-3 py-1 rounded-full border shadow-2xs", currentStyles.badge)}>
                 {activeAnnouncement.type === 'success' ? 'Sucesso' :
                  activeAnnouncement.type === 'warning' ? 'Atenção' :
                  activeAnnouncement.type === 'alert' ? 'Destaque' : 'Informativo'}
               </span>
               
-              <div className="flex items-center text-[11px] text-slate-500 gap-1.5 font-medium ml-1">
-                <Clock className="h-3 w-3" />
+              <div className="flex items-center text-xs text-slate-500 gap-1.5 font-bold ml-1">
+                <Clock className="h-3.5 w-3.5" />
                 <span>{activeAnnouncement.date}</span>
                 <span className="opacity-50">•</span>
-                <User className="h-3 w-3" />
+                <User className="h-3.5 w-3.5" />
                 <span className="font-semibold">{activeAnnouncement.author}</span>
               </div>
             </div>
 
-            <h4 className="text-xl font-bold text-slate-900 leading-snug font-display">
+            <h4 className="text-2xl font-black text-slate-900 leading-snug font-display">
               {activeAnnouncement.title}
             </h4>
-            <p className="text-sm text-slate-700 leading-relaxed font-normal line-clamp-2">
+            <p className="text-base text-slate-800 leading-relaxed font-medium line-clamp-2">
               {activeAnnouncement.description}
             </p>
           </motion.div>

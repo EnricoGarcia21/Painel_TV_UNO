@@ -128,9 +128,6 @@ export const Podium3D: React.FC<Podium3DProps> = ({ consultants, theme, onConsul
             )}>
               {c.name.split(' ')[0]} {c.name.split(' ')[1] || ''}
             </p>
-            <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
-              {c.region || 'Regional'}
-            </p>
           </div>
 
           {/* Sales Indicator */}

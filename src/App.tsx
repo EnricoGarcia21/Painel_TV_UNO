@@ -5,12 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Clock, 
   Calendar, 
-  TrendingUp, 
-  TrendingDown, 
-  MapPin, 
-  Activity, 
-  ChevronRight,
-  Minus,
   Settings,
   ArrowLeft,
   RefreshCw,
@@ -18,7 +12,6 @@ import {
   Megaphone
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 // Custom APIs, Utilities & Components
 import { 
@@ -30,6 +23,7 @@ import {
   adjustDailySales
 } from './api/mockData';
 import type { Consultant, DashboardData, Announcement } from './api/mockData';
+import { supabase } from './api/supabaseClient';
 import { cn } from './lib/utils';
 import { Card, CardContent } from './components/ui/Card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './components/ui/Dialog';
@@ -49,11 +43,12 @@ function DashboardContent() {
   const [time, setTime] = useState(new Date());
   const [selectedConsultant, setSelectedConsultant] = useState<Consultant | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState('2026-07');
 
   // Fetch data using React Query (auto-updates every 10 seconds to simulate real-time operations)
   const { data, isLoading, error } = useQuery({
-    queryKey: ['dashboardData'],
-    queryFn: fetchDashboardData,
+    queryKey: ['dashboardData', selectedMonth],
+    queryFn: () => fetchDashboardData(selectedMonth),
     refetchInterval: 10000, // Refetch every 10 seconds
   });
   
@@ -63,11 +58,17 @@ function DashboardContent() {
   const lastSwitchTimeRef = useRef(Date.now());
 
   const todayDay = time.getDate(); // 1 to 31
+  const currentYear = time.getFullYear();
+  const currentMonth = time.getMonth();
 
-  // Dynamic calculations for current month weekdays (removing Sat/Sun)
-  const year = time.getFullYear();
-  const month = time.getMonth();
+  // Dynamic calculations for selected month weekdays (removing Sat/Sun)
+  const [yearStr, monthIndexStr] = selectedMonth.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthIndexStr, 10) - 1; // 0-indexed
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const isCurrentMonth = currentYear === year && currentMonth === month;
+
   const weekdays = Array.from({ length: daysInMonth }, (_, i) => i + 1).filter((day) => {
     const date = new Date(year, month, day);
     const dayOfWeek = date.getDay();
@@ -219,10 +220,10 @@ function DashboardContent() {
               <span className="text-white font-extrabold text-xl font-display">U</span>
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 font-display flex items-center gap-1">
+              <h1 className="text-3xl font-black tracking-tight text-slate-900 font-display flex items-center gap-1">
                 Painel <span className="text-[#007b3f]">Unoeste</span>
               </h1>
-              <p className="text-xs text-slate-500 font-semibold tracking-wider uppercase">Painel de Matrículas Comercial</p>
+              <p className="text-sm text-slate-500 font-bold tracking-wider uppercase">Painel de Matrículas Comercial</p>
             </div>
           </div>
 
@@ -243,18 +244,23 @@ function DashboardContent() {
             </button>
           </div>
 
-          {/* Date and Time */}
+          {/* Date, Time and Month Selector */}
           <div className="flex items-center gap-6 text-slate-700 font-medium">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4.5 w-4.5 text-slate-400" />
-              <span className="text-sm capitalize">
-                {format(time, "EEEE, d 'de' MMMM", { locale: ptBR })}
-              </span>
+            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/50">
+              <Calendar className="h-4 w-4 text-slate-500" />
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="bg-transparent text-sm font-bold text-slate-700 focus:outline-none cursor-pointer"
+              >
+                <option value="2026-06">Junho / 2026</option>
+                <option value="2026-07">Julho / 2026</option>
+              </select>
             </div>
             <div className="h-4 w-[1px] bg-slate-200" />
             <div className="flex items-center gap-2">
               <Clock className="h-4.5 w-4.5 text-slate-400" />
-              <span className="text-base font-extrabold font-mono text-slate-950">
+              <span className="text-xl font-extrabold font-mono text-slate-950">
                 {format(time, 'HH:mm:ss')}
               </span>
             </div>
@@ -370,36 +376,39 @@ function DashboardContent() {
                       >
                         <table className="w-full min-w-[1400px] border-collapse text-left">
                           <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-100 shadow-3xs">
-                            <tr className="text-slate-500 text-xs font-black uppercase tracking-wider">
-                              <th className="py-4 px-4 font-black w-20 text-center">Pos</th>
-                              <th className="py-4 px-4 font-black">Consultor</th>
-                              <th className="py-4 px-4 font-black w-36">Hub</th>
+                            <tr className="text-slate-500 text-sm font-black uppercase tracking-wider">
+                              <th className="py-4 px-4 font-black w-24 text-center">Pos</th>
+                              <th className="py-4 px-4 font-black text-base">Consultor</th>
                               {weekdays.map((day) => (
                                 <th 
                                   key={day} 
                                   className={cn(
                                     "py-4 px-1.5 font-black text-center text-xs min-w-[36px] transition-colors duration-300 border-l border-slate-200/60",
-                                    day === todayDay && "text-emerald-700 bg-emerald-100/50 font-black ring-1 ring-emerald-500/20"
+                                    day === todayDay && isCurrentMonth && "text-emerald-700 bg-emerald-100/50 font-black ring-1 ring-emerald-500/20"
                                   )}
                                 >
                                   {day}
                                 </th>
                               ))}
-                              <th className="py-4 px-4 font-black text-center w-28">Total</th>
+                              <th className="py-4 px-4 font-black text-center w-28">Mês</th>
+                              <th className="py-4 px-4 font-black text-center w-28">Geral</th>
                               <th className="py-4 px-4 font-black text-center w-32">Status</th>
-                              <th className="py-4 px-4 font-black text-right w-24">Ações</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {data.presencial.ranking.map((consultant) => (
+                            {data.presencial.ranking.map((consultant, idx) => (
                               <tr 
                                 key={consultant.id}
                                 onClick={() => handleConsultantClick(consultant)}
-                                className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
+                                className={cn(
+                                  "group transition-colors cursor-pointer",
+                                  idx % 2 === 0 ? "bg-white" : "bg-emerald-50/20",
+                                  "hover:bg-emerald-50/60"
+                                )}
                               >
                                 <td className="py-4 px-4 text-center">
                                   <span className={cn(
-                                    "inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-black",
+                                    "inline-flex items-center justify-center w-12 h-12 rounded-full text-lg font-black",
                                     consultant.rank === 1 ? "bg-amber-100 text-amber-900 ring-2 ring-amber-400/80 shadow-xs" :
                                     consultant.rank === 2 ? "bg-slate-200 text-slate-900 ring-2 ring-slate-400/80 shadow-xs" :
                                     consultant.rank === 3 ? "bg-orange-100 text-orange-900 ring-2 ring-orange-400/80 shadow-xs" :
@@ -409,66 +418,50 @@ function DashboardContent() {
                                   </span>
                                 </td>
                                 <td className="py-4 px-4">
-                                  <div className="flex items-center gap-3.5">
-                                    <div className="h-11 w-11 rounded-full bg-emerald-50 flex items-center justify-center font-bold text-sm text-emerald-800 border-2 border-emerald-100/60 shadow-3xs">
+                                  <div className="flex items-center gap-4">
+                                    <div className="h-13 w-13 rounded-full bg-emerald-50 flex items-center justify-center font-bold text-base text-emerald-800 border-2 border-emerald-100/60 shadow-3xs">
                                       {consultant.avatar}
                                     </div>
                                     <div>
-                                      <p className="text-base font-black text-slate-900 group-hover:text-emerald-700 transition-colors tracking-tight">
+                                      <p className="text-xl font-black text-slate-900 group-hover:text-emerald-700 transition-colors tracking-tight">
                                         {consultant.name}
                                       </p>
                                     </div>
                                   </div>
                                 </td>
-                                <td className="py-4 px-4 text-sm font-bold text-slate-600">
-                                  <span className="flex items-center gap-1.5">
-                                    <MapPin className="h-4.5 w-4.5 text-slate-400" />
-                                    {consultant.region}
-                                  </span>
-                                </td>
                                 {weekdays.map((day) => (
                                   <td 
                                     key={day} 
                                     className={cn(
-                                      "py-4 px-1.5 text-center font-black text-sm transition-colors duration-300 border-l border-slate-100",
-                                      day === todayDay ? "bg-emerald-50/40 text-emerald-800 font-black" : "text-slate-600"
+                                      "py-4 px-1.5 text-center font-black text-base transition-colors duration-300 border-l border-slate-100",
+                                      day === todayDay && isCurrentMonth ? "bg-emerald-50/40 text-emerald-800 font-black" : "text-slate-600"
                                     )}
                                   >
-                                    {consultant.dailySales?.[day] ?? 0}
+                                    {consultant.dailySales?.[selectedMonth]?.[day] ?? 0}
                                   </td>
                                 ))}
                                 <td className="py-4 px-4 text-center">
-                                  <span className="text-sm font-black text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200/50 shadow-3xs">
+                                  <span className="text-lg font-black text-emerald-800 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200/50 shadow-3xs">
+                                    {Object.values(consultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}
+                                  </span>
+                                </td>
+                                <td className="py-4 px-4 text-center">
+                                  <span className="text-lg font-black text-slate-700 bg-slate-100 px-4 py-2 rounded-xl border border-slate-200 shadow-3xs">
                                     {consultant.sales}
                                   </span>
                                 </td>
                                 <td className="py-4 px-4 text-center">
                                   {consultant.status === 'active' ? (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/50 shadow-3xs">
+                                    <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/50 shadow-3xs">
                                       <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
                                       Ativo
                                     </span>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 border border-amber-200/50 shadow-3xs">
+                                    <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-extrabold bg-amber-50 text-amber-700 border border-amber-200/50 shadow-3xs">
                                       <span className="h-2 w-2 rounded-full bg-amber-400"></span>
                                       Férias
                                     </span>
                                   )}
-                                </td>
-                                <td className="py-4 px-4 text-right">
-                                  <div className="flex items-center justify-end gap-2.5">
-                                    <div className={cn(
-                                      "p-2 rounded-xl border shadow-3xs",
-                                      consultant.trend === 'up' ? "bg-emerald-50 text-emerald-600 border-emerald-100/50" :
-                                      consultant.trend === 'down' ? "bg-red-50 text-red-600 border-red-100/50" :
-                                      "bg-slate-50 text-slate-400 border-slate-100"
-                                    )}>
-                                      {consultant.trend === 'up' && <TrendingUp className="h-4.5 w-4.5" />}
-                                      {consultant.trend === 'down' && <TrendingDown className="h-4.5 w-4.5" />}
-                                      {consultant.trend === 'stable' && <Minus className="h-4.5 w-4.5" />}
-                                    </div>
-                                    <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-slate-500 transition-transform group-hover:translate-x-0.5" />
-                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -521,36 +514,39 @@ function DashboardContent() {
                       >
                         <table className="w-full min-w-[1400px] border-collapse text-left">
                           <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-100 shadow-3xs">
-                            <tr className="text-slate-500 text-xs font-black uppercase tracking-wider">
-                              <th className="py-4 px-4 font-black w-20 text-center">Pos</th>
-                              <th className="py-4 px-4 font-black">Consultor</th>
-                              <th className="py-4 px-4 font-black w-36">Hub</th>
+                            <tr className="text-slate-500 text-sm font-black uppercase tracking-wider">
+                              <th className="py-4 px-4 font-black w-24 text-center">Pos</th>
+                              <th className="py-4 px-4 font-black text-base">Consultor</th>
                               {weekdays.map((day) => (
                                 <th 
                                   key={day} 
                                   className={cn(
                                     "py-4 px-1.5 font-black text-center text-xs min-w-[36px] transition-colors duration-300 border-l border-slate-200/60",
-                                    day === todayDay && "text-orange-700 bg-orange-100/50 font-black ring-1 ring-orange-500/20"
+                                    day === todayDay && isCurrentMonth && "text-orange-700 bg-orange-100/50 font-black ring-1 ring-orange-500/20"
                                   )}
                                 >
                                   {day}
                                 </th>
                               ))}
-                              <th className="py-4 px-4 font-black text-center w-28">Total</th>
+                              <th className="py-4 px-4 font-black text-center w-28">Mês</th>
+                              <th className="py-4 px-4 font-black text-center w-28">Geral</th>
                               <th className="py-4 px-4 font-black text-center w-32">Status</th>
-                              <th className="py-4 px-4 font-black text-right w-24">Ações</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {data.ead.ranking.map((consultant) => (
+                            {data.ead.ranking.map((consultant, idx) => (
                               <tr 
                                 key={consultant.id}
                                 onClick={() => handleConsultantClick(consultant)}
-                                className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
+                                className={cn(
+                                  "group transition-colors cursor-pointer",
+                                  idx % 2 === 0 ? "bg-white" : "bg-orange-50/25",
+                                  "hover:bg-orange-50/60"
+                                )}
                               >
                                 <td className="py-4 px-4 text-center">
                                   <span className={cn(
-                                    "inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-black",
+                                    "inline-flex items-center justify-center w-12 h-12 rounded-full text-lg font-black",
                                     consultant.rank === 1 ? "bg-amber-100 text-amber-900 ring-2 ring-amber-400/80 shadow-xs" :
                                     consultant.rank === 2 ? "bg-slate-200 text-slate-900 ring-2 ring-slate-400/80 shadow-xs" :
                                     consultant.rank === 3 ? "bg-orange-100 text-orange-900 ring-2 ring-orange-400/80 shadow-xs" :
@@ -560,66 +556,50 @@ function DashboardContent() {
                                   </span>
                                 </td>
                                 <td className="py-4 px-4">
-                                  <div className="flex items-center gap-3.5">
-                                    <div className="h-11 w-11 rounded-full bg-orange-50 flex items-center justify-center font-bold text-sm text-orange-800 border-2 border-orange-100/60 shadow-3xs">
+                                  <div className="flex items-center gap-4">
+                                    <div className="h-13 w-13 rounded-full bg-orange-50 flex items-center justify-center font-bold text-base text-orange-800 border-2 border-orange-100/60 shadow-3xs">
                                       {consultant.avatar}
                                     </div>
                                     <div>
-                                      <p className="text-base font-black text-slate-900 group-hover:text-orange-700 transition-colors tracking-tight">
+                                      <p className="text-xl font-black text-slate-900 group-hover:text-orange-700 transition-colors tracking-tight">
                                         {consultant.name}
                                       </p>
                                     </div>
                                   </div>
                                 </td>
-                                <td className="py-4 px-4 text-sm font-bold text-slate-600">
-                                  <span className="flex items-center gap-1.5">
-                                    <MapPin className="h-4.5 w-4.5 text-slate-400" />
-                                    {consultant.region}
-                                  </span>
-                                </td>
                                 {weekdays.map((day) => (
                                   <td 
                                     key={day} 
                                     className={cn(
-                                      "py-4 px-1.5 text-center font-black text-sm transition-colors duration-300 border-l border-slate-100",
-                                      day === todayDay ? "bg-orange-50/40 text-orange-800 font-black" : "text-slate-600"
+                                      "py-4 px-1.5 text-center font-black text-base transition-colors duration-300 border-l border-slate-100",
+                                      day === todayDay && isCurrentMonth ? "bg-orange-50/40 text-orange-800 font-black" : "text-slate-600"
                                     )}
                                   >
-                                    {consultant.dailySales?.[day] ?? 0}
+                                    {consultant.dailySales?.[selectedMonth]?.[day] ?? 0}
                                   </td>
                                 ))}
                                 <td className="py-4 px-4 text-center">
-                                  <span className="text-sm font-black text-orange-800 bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-200/50 shadow-3xs">
+                                  <span className="text-lg font-black text-orange-800 bg-orange-50 px-4 py-2 rounded-xl border border-orange-200/50 shadow-3xs">
+                                    {Object.values(consultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}
+                                  </span>
+                                </td>
+                                <td className="py-4 px-4 text-center">
+                                  <span className="text-lg font-black text-slate-700 bg-slate-100 px-4 py-2 rounded-xl border border-slate-200 shadow-3xs">
                                     {consultant.sales}
                                   </span>
                                 </td>
                                 <td className="py-4 px-4 text-center">
                                   {consultant.status === 'active' ? (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/50 shadow-3xs">
+                                    <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/50 shadow-3xs">
                                       <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
                                       Ativo
                                     </span>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 border border-amber-200/50 shadow-3xs">
+                                    <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-extrabold bg-amber-50 text-amber-700 border border-amber-200/50 shadow-3xs">
                                       <span className="h-2 w-2 rounded-full bg-amber-400"></span>
                                       Férias
                                     </span>
                                   )}
-                                </td>
-                                <td className="py-4 px-4 text-right">
-                                  <div className="flex items-center justify-end gap-2.5">
-                                    <div className={cn(
-                                      "p-2 rounded-xl border shadow-3xs",
-                                      consultant.trend === 'up' ? "bg-orange-50 text-orange-600 border-orange-100/50" :
-                                      consultant.trend === 'down' ? "bg-red-50 text-red-600 border-red-100/50" :
-                                      "bg-slate-50 text-slate-400 border-slate-100"
-                                    )}>
-                                      {consultant.trend === 'up' && <TrendingUp className="h-4.5 w-4.5" />}
-                                      {consultant.trend === 'down' && <TrendingDown className="h-4.5 w-4.5" />}
-                                      {consultant.trend === 'stable' && <Minus className="h-4.5 w-4.5" />}
-                                    </div>
-                                    <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-slate-500 transition-transform group-hover:translate-x-0.5" />
-                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -653,9 +633,8 @@ function DashboardContent() {
                   <DialogTitle className="text-xl font-bold font-display text-slate-900">
                     {selectedConsultant.name}
                   </DialogTitle>
-                  <DialogDescription className="text-xs text-slate-500 font-semibold flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
-                    Hub: {selectedConsultant.region || 'Matriz'}
+                  <DialogDescription className="sr-only">
+                    Perfil detalhado de {selectedConsultant.name}
                   </DialogDescription>
                 </div>
               </div>
@@ -676,14 +655,11 @@ function DashboardContent() {
 
                 {/* Sales card */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-col justify-between">
-                  <span className="text-[10px] uppercase font-bold text-slate-500">Matrículas Realizadas</span>
-                  <p className="text-2xl font-extrabold text-slate-950 mt-1 font-display">
-                    {selectedConsultant.sales}
+                  <span className="text-[10px] uppercase font-bold text-slate-500">Matrículas no Mês</span>
+                  <p className="text-2xl font-extrabold text-emerald-800 mt-1 font-display">
+                    {Object.values(selectedConsultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}
                   </p>
-                  <span className="text-[9px] text-emerald-600 font-bold mt-0.5 flex items-center gap-0.5">
-                    <Activity className="h-2.5 w-2.5 animate-pulse" />
-                    Última {selectedConsultant.lastSaleTime || 'há pouco'}
-                  </span>
+                  <span className="text-[9px] text-slate-400 mt-0.5">Total Geral: {selectedConsultant.sales}</span>
                 </div>
 
               </div>
@@ -691,8 +667,10 @@ function DashboardContent() {
               {/* Progress to personal target */}
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
                 <div className="flex justify-between text-xs font-bold">
-                  <span className="text-slate-600">Atingimento da Meta Pessoal</span>
-                  <span className="text-slate-900">{Math.round((selectedConsultant.sales / (selectedConsultant.id >= 100 ? 100 : 40)) * 100)}%</span>
+                  <span className="text-slate-600">Atingimento da Meta Pessoal (Mês)</span>
+                  <span className="text-slate-900">
+                    {Math.round((Object.values(selectedConsultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0) / (selectedConsultant.id >= 100 ? 100 : 40)) * 100)}%
+                  </span>
                 </div>
                 <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
                   <div 
@@ -700,11 +678,11 @@ function DashboardContent() {
                       "h-full rounded-full transition-all duration-500",
                       selectedConsultant.id >= 100 ? "bg-orange-500" : "bg-emerald-500"
                     )}
-                    style={{ width: `${Math.min((selectedConsultant.sales / (selectedConsultant.id >= 100 ? 100 : 40)) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((Object.values(selectedConsultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0) / (selectedConsultant.id >= 100 ? 100 : 40)) * 100, 100)}%` }}
                   />
                 </div>
                 <div className="flex justify-between text-[9px] text-slate-400 font-bold">
-                  <span>Atual: {selectedConsultant.sales}</span>
+                  <span>Mês: {Object.values(selectedConsultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}</span>
                   <span>Meta: {selectedConsultant.id >= 100 ? 100 : 40}</span>
                 </div>
               </div>
@@ -735,6 +713,7 @@ function DashboardContent() {
 function AdminContent() {
   const [time, setTime] = useState(new Date());
   const queryClient = useQueryClient();
+  const [selectedMonth, setSelectedMonth] = useState('2026-07');
   
   // Live real-time clock
   useEffect(() => {
@@ -743,8 +722,8 @@ function AdminContent() {
   }, []);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['dashboardData'],
-    queryFn: fetchDashboardData,
+    queryKey: ['dashboardData', selectedMonth],
+    queryFn: () => fetchDashboardData(selectedMonth),
   });
 
   const [localData, setLocalData] = useState<DashboardData | null>(null);
@@ -764,9 +743,10 @@ function AdminContent() {
   const [editingDailyAgent, setEditingDailyAgent] = useState<Consultant | null>(null);
   const [tempDailySales, setTempDailySales] = useState<{ [key: number]: number }>({});
 
-  // Dynamic calculations for current month weekdays (removing Sat/Sun)
-  const year = time.getFullYear();
-  const month = time.getMonth();
+  // Dynamic calculations for selected month weekdays (removing Sat/Sun)
+  const [yearStr, monthIndexStr] = selectedMonth.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthIndexStr, 10) - 1; // 0-indexed
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const weekdays = Array.from({ length: daysInMonth }, (_, i) => i + 1).filter((day) => {
     const date = new Date(year, month, day);
@@ -778,7 +758,7 @@ function AdminContent() {
     setEditingDailyAgent(consultant);
     const sales: { [key: number]: number } = {};
     for (let d = 1; d <= 31; d++) {
-      sales[d] = consultant.dailySales?.[d] ?? 0;
+      sales[d] = consultant.dailySales?.[selectedMonth]?.[d] ?? 0;
     }
     setTempDailySales(sales);
   };
@@ -793,9 +773,13 @@ function AdminContent() {
     }
     
     if (agent) {
-      agent.dailySales = { ...tempDailySales };
-      // Recalculate total sales based on weekdays only
-      const total = weekdays.reduce((sum, day) => sum + (tempDailySales[day] || 0), 0);
+      if (!agent.dailySales) agent.dailySales = {};
+      agent.dailySales[selectedMonth] = { ...tempDailySales };
+      // Recalculate grand total sales across all months
+      let total = 0;
+      for (const m in agent.dailySales) {
+        total += Object.values(agent.dailySales[m]).reduce((a, b) => a + b, 0);
+      }
       agent.sales = total;
       
       saveDashboardData(newData);
@@ -817,15 +801,15 @@ function AdminContent() {
     if (!localData) return;
     const newData = JSON.parse(JSON.stringify(localData)) as DashboardData;
     
-    // Find in presencial
     let agent = newData.presencial.ranking.find(a => a.id === id);
     if (!agent) {
       agent = newData.ead.ranking.find(a => a.id === id);
     }
 
     if (agent) {
-      const targetSales = Math.max(0, agent.sales + delta);
-      adjustDailySales(agent, targetSales);
+      const currentMonthSales = Object.values(agent.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0);
+      const targetMonthSales = Math.max(0, currentMonthSales + delta);
+      adjustDailySales(agent, targetMonthSales, selectedMonth);
       saveDashboardData(newData);
       setLocalData(newData);
       queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
@@ -844,7 +828,7 @@ function AdminContent() {
     }
 
     if (agent) {
-      adjustDailySales(agent, sales);
+      adjustDailySales(agent, sales, selectedMonth);
       saveDashboardData(newData);
       setLocalData(newData);
       queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
@@ -868,22 +852,7 @@ function AdminContent() {
     }
   };
 
-  const handleRegionChange = (id: number, newRegion: string) => {
-    if (!localData) return;
-    const newData = JSON.parse(JSON.stringify(localData)) as DashboardData;
-    
-    let agent = newData.presencial.ranking.find(a => a.id === id);
-    if (!agent) {
-      agent = newData.ead.ranking.find(a => a.id === id);
-    }
 
-    if (agent) {
-      agent.region = newRegion;
-      saveDashboardData(newData);
-      setLocalData(newData);
-      queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
-    }
-  };
 
   const handleToggleSimulation = (checked: boolean) => {
     setSimulationEnabled(checked);
@@ -894,8 +863,8 @@ function AdminContent() {
   const handleReset = () => {
     if (window.confirm("Deseja realmente redefinir todos os dados para os valores padrão de simulação?")) {
       resetDashboardData();
-      setSimulationEnabled(true);
-      setSimulationEnabledState(true);
+      setSimulationEnabled(false);
+      setSimulationEnabledState(false);
       queryClient.invalidateQueries({ queryKey: ['dashboardData'] }).then(() => {
         setLocalData(null);
       });
@@ -1010,18 +979,23 @@ function AdminContent() {
             </div>
           </div>
 
-          {/* Date and Time */}
+          {/* Date, Time and Month Selector */}
           <div className="flex items-center gap-6 text-slate-700 font-medium">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4.5 w-4.5 text-slate-400" />
-              <span className="text-sm capitalize">
-                {format(time, "EEEE, d 'de' MMMM", { locale: ptBR })}
-              </span>
+            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/50">
+              <Calendar className="h-4 w-4 text-slate-500" />
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="bg-transparent text-sm font-bold text-slate-700 focus:outline-none cursor-pointer"
+              >
+                <option value="2026-06">Junho / 2026</option>
+                <option value="2026-07">Julho / 2026</option>
+              </select>
             </div>
             <div className="h-4 w-[1px] bg-slate-200" />
             <div className="flex items-center gap-2">
               <Clock className="h-4.5 w-4.5 text-slate-400" />
-              <span className="text-base font-extrabold font-mono text-slate-950">
+              <span className="text-xl font-extrabold font-mono text-slate-950">
                 {format(time, 'HH:mm:ss')}
               </span>
             </div>
@@ -1105,15 +1079,6 @@ function AdminContent() {
                       <p className="text-sm font-bold text-slate-800">
                         {consultant.name}
                       </p>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <span className="text-[10px] text-slate-400 font-bold">Hub:</span>
-                        <input
-                          type="text"
-                          value={consultant.region || ''}
-                          onChange={(e) => handleRegionChange(consultant.id, e.target.value)}
-                          className="text-[10px] text-slate-600 font-bold bg-transparent border-b border-dashed border-slate-300 focus:border-emerald-500 focus:outline-none w-28 px-0.5"
-                        />
-                      </div>
                     </div>
                   </div>
 
@@ -1147,11 +1112,14 @@ function AdminContent() {
                     
                     <input
                       type="number"
-                      value={consultant.sales}
+                      value={Object.values(consultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}
                       onChange={(e) => handleInputChange(consultant.id, e.target.value)}
                       className="w-14 h-8 bg-slate-50 border border-slate-200 rounded-lg text-center font-extrabold text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                       min="0"
                     />
+                    <span className="text-[10px] text-slate-400 font-bold ml-1 min-w-[50px] text-right">
+                      Geral: {consultant.sales}
+                    </span>
 
                     <button
                       onClick={() => handleUpdateSales(consultant.id, 1)}
@@ -1206,15 +1174,6 @@ function AdminContent() {
                       <p className="text-sm font-bold text-slate-800">
                         {consultant.name}
                       </p>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <span className="text-[10px] text-slate-400 font-bold">Hub:</span>
-                        <input
-                          type="text"
-                          value={consultant.region || ''}
-                          onChange={(e) => handleRegionChange(consultant.id, e.target.value)}
-                          className="text-[10px] text-slate-600 font-bold bg-transparent border-b border-dashed border-slate-300 focus:border-orange-500 focus:outline-none w-28 px-0.5"
-                        />
-                      </div>
                     </div>
                   </div>
 
@@ -1248,11 +1207,14 @@ function AdminContent() {
                     
                     <input
                       type="number"
-                      value={consultant.sales}
+                      value={Object.values(consultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}
                       onChange={(e) => handleInputChange(consultant.id, e.target.value)}
                       className="w-14 h-8 bg-slate-50 border border-slate-200 rounded-lg text-center font-extrabold text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                       min="0"
                     />
+                    <span className="text-[10px] text-slate-400 font-bold ml-1 min-w-[50px] text-right">
+                      Geral: {consultant.sales}
+                    </span>
 
                     <button
                       onClick={() => handleUpdateSales(consultant.id, 1)}
@@ -1622,6 +1584,31 @@ export default function App() {
     const handleHashChange = () => setHash(window.location.hash);
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // Listen to Supabase Realtime changes to auto-invalidate Query cache
+  useEffect(() => {
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'consultants' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'announcements' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const isAdmin = hash === '#/admin';

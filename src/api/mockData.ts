@@ -1,3 +1,4 @@
+import { supabase } from './supabaseClient';
 import axios from 'axios';
 
 export interface Consultant {
@@ -5,8 +6,8 @@ export interface Consultant {
   rank: number;
   name: string;
   avatar: string;
-  sales: number;
-  dailySales: Record<number, number>; // keys 1 to 31
+  sales: number; // Grand total sales across all months
+  dailySales: Record<string, Record<number, number>>; // key: "YYYY-MM" (e.g. "2026-07"), value: Record<day, quantity>
   status: 'active' | 'vacation';
   value: number;
   conversionRate: number;
@@ -46,8 +47,14 @@ export interface DashboardData {
   announcements: Announcement[];
 }
 
-const calculateMetrics = (ranking: Consultant[], goal: number): Metric => {
-  const enrollments = ranking.reduce((acc, curr) => acc + curr.sales, 0);
+const calculateMetrics = (ranking: Consultant[], goal: number, monthStr: string = "2026-07"): Metric => {
+  // Metric enrollments should sum the sales for the selected month
+  const enrollments = ranking.reduce((acc, curr) => {
+    const monthlyData = curr.dailySales?.[monthStr] || {};
+    const monthSum = Object.values(monthlyData).reduce((a, b) => a + b, 0);
+    return acc + monthSum;
+  }, 0);
+
   return {
     enrollments,
     goal,
@@ -57,15 +64,12 @@ const calculateMetrics = (ranking: Consultant[], goal: number): Metric => {
   };
 };
 
-const generateDailySales = (totalSales: number) => {
+export const generateDailySales = (totalSales: number, year: number, month: number) => {
   const result: Record<number, number> = {};
   for (let i = 1; i <= 31; i++) {
     result[i] = 0;
   }
   
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const weekdays: number[] = [];
   
@@ -89,90 +93,102 @@ const generateDailySales = (totalSales: number) => {
   return result;
 };
 
-export const adjustDailySales = (consultant: Consultant, newSales: number) => {
+export const adjustDailySales = (consultant: Consultant, newMonthSales: number, monthStr: string) => {
   if (!consultant.dailySales) {
     consultant.dailySales = {};
-    for (let i = 1; i <= 31; i++) {
-      consultant.dailySales[i] = 0;
-    }
   }
-  const diff = newSales - consultant.sales;
-  const now = new Date();
-  let todayDay = now.getDate(); // 1 to 31
-  const dayOfWeek = now.getDay();
-  
-  // If weekend, backtrack to Friday
-  if (dayOfWeek === 6) {
-    todayDay = Math.max(1, todayDay - 1);
-  } else if (dayOfWeek === 0) {
-    todayDay = Math.max(1, todayDay - 2);
+  if (!consultant.dailySales[monthStr]) {
+    consultant.dailySales[monthStr] = {};
+    for (let i = 1; i <= 31; i++) {
+      consultant.dailySales[monthStr][i] = 0;
+    }
   }
 
-  if (diff > 0) {
-    consultant.dailySales[todayDay] = (consultant.dailySales[todayDay] || 0) + diff;
-  } else if (diff < 0) {
-    let toSubtract = Math.abs(diff);
-    // Work backwards starting from today
-    const order = [todayDay, ...Array.from({ length: 31 }, (_, i) => 31 - i).filter(d => d !== todayDay)];
-    for (const day of order) {
-      if (toSubtract <= 0) break;
-      const available = consultant.dailySales[day] || 0;
-      const sub = Math.min(available, toSubtract);
-      consultant.dailySales[day] = available - sub;
-      toSubtract -= sub;
+  const currentMonthSales = Object.values(consultant.dailySales[monthStr]).reduce((a, b) => a + b, 0);
+  const diff = newMonthSales - currentMonthSales;
+
+  const [yearStr, monthIndexStr] = monthStr.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthIndexStr, 10) - 1; // 0-indexed
+
+  const now = new Date();
+  let todayDay = now.getDate();
+  const isCurrentMonth = now.getFullYear() === year && now.getMonth() === month;
+
+  // If the change is exactly +1 or -1 in the current month, apply it to today
+  if (isCurrentMonth && Math.abs(diff) === 1) {
+    const dayOfWeek = now.getDay();
+    // If weekend, backtrack to Friday
+    if (dayOfWeek === 6) {
+      todayDay = Math.max(1, todayDay - 1);
+    } else if (dayOfWeek === 0) {
+      todayDay = Math.max(1, todayDay - 2);
     }
-    if (toSubtract > 0) {
-      consultant.dailySales[todayDay] = Math.max(0, (consultant.dailySales[todayDay] || 0) - toSubtract);
+    if (diff > 0) {
+      consultant.dailySales[monthStr][todayDay] = (consultant.dailySales[monthStr][todayDay] || 0) + diff;
+    } else {
+      consultant.dailySales[monthStr][todayDay] = Math.max(0, (consultant.dailySales[monthStr][todayDay] || 0) - 1);
     }
+  } else {
+    // If it's a larger change or other month, redistribute the monthly total
+    consultant.dailySales[monthStr] = generateDailySales(newMonthSales, year, month);
   }
-  consultant.sales = newSales;
+
+  // Recalculate grand total sales across all months
+  let totalSales = 0;
+  for (const m in consultant.dailySales) {
+    totalSales += Object.values(consultant.dailySales[m]).reduce((a, b) => a + b, 0);
+  }
+  consultant.sales = totalSales;
 };
 
-// Load initial database or from localStorage
-const loadDatabase = (): DashboardData => {
-  const saved = localStorage.getItem('univ_sales_dashboard_data');
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      // Ensure ranking is sorted on load
-      parsed.presencial.ranking.sort((a: any, b: any) => b.sales - a.sales);
-      parsed.ead.ranking.sort((a: any, b: any) => b.sales - a.sales);
-      return parsed;
-    } catch (e) {
-      console.error("Failed to parse saved database, resetting", e);
-    }
-  }
-
-  // Default starting database with real names
+// Default starting database with real names for reset, containing Jun 2026 and Jul 2026 data
+const loadDefaultDatabase = (): DashboardData => {
   const initialPresencial = [
-    { id: 1, rank: 1, name: 'Fabricia', avatar: 'FA', sales: 45, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 2, rank: 2, name: 'Rafaella', avatar: 'RA', sales: 41, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 3, rank: 3, name: 'Cauã', avatar: 'CA', sales: 38, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'stable' as const },
-    { id: 4, rank: 4, name: 'Giovanna S', avatar: 'GS', sales: 34, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 5, rank: 5, name: 'Murilo G.', avatar: 'MG', sales: 30, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'down' as const },
-    { id: 6, rank: 6, name: 'Giovanna C', avatar: 'GC', sales: 27, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 7, rank: 7, name: 'Emanoel', avatar: 'EM', sales: 25, status: 'vacation' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'stable' as const },
-    { id: 8, rank: 8, name: 'Isadora', avatar: 'IS', sales: 22, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 9, rank: 9, name: 'Nicoly', avatar: 'NI', sales: 19, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'down' as const },
-    { id: 10, rank: 10, name: 'Júlia', avatar: 'JU', sales: 16, status: 'vacation' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 11, rank: 11, name: 'Luís', avatar: 'LU', sales: 14, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'stable' as const },
-    { id: 12, rank: 12, name: 'João', avatar: 'JO', sales: 12, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 13, rank: 13, name: 'Gabriel', avatar: 'GA', sales: 9, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'down' as const },
-    { id: 14, rank: 14, name: 'Majori', avatar: 'MA', sales: 6, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 15, rank: 15, name: 'Murillo A.', avatar: 'MU', sales: 3, status: 'vacation' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'stable' as const }
-  ].map(c => ({ ...c, dailySales: generateDailySales(c.sales) }));
+    { id: 1, name: 'Fabricia', avatar: 'FA', sales: 45, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 2, name: 'Rafaella', avatar: 'RA', sales: 41, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 3, name: 'Cauã', avatar: 'CA', sales: 38, status: 'active' as const, value: 0, conversionRate: 0, trend: 'stable' as const },
+    { id: 4, name: 'Giovanna S', avatar: 'GS', sales: 34, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 5, name: 'Murilo G.', avatar: 'MG', sales: 30, status: 'active' as const, value: 0, conversionRate: 0, trend: 'down' as const },
+    { id: 6, name: 'Giovanna C', avatar: 'GC', sales: 27, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 7, name: 'Emanoel', avatar: 'EM', sales: 25, status: 'vacation' as const, value: 0, conversionRate: 0, trend: 'stable' as const },
+    { id: 8, name: 'Isadora', avatar: 'IS', sales: 22, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 9, name: 'Nicoly', avatar: 'NI', sales: 19, status: 'active' as const, value: 0, conversionRate: 0, trend: 'down' as const },
+    { id: 10, name: 'Júlia', avatar: 'JU', sales: 16, status: 'vacation' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 11, name: 'Luís', avatar: 'LU', sales: 14, status: 'active' as const, value: 0, conversionRate: 0, trend: 'stable' as const },
+    { id: 12, name: 'João', avatar: 'JO', sales: 12, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 13, name: 'Gabriel', avatar: 'GA', sales: 9, status: 'active' as const, value: 0, conversionRate: 0, trend: 'down' as const },
+    { id: 14, name: 'Majori', avatar: 'MA', sales: 6, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 15, name: 'Murillo A.', avatar: 'MU', sales: 3, status: 'vacation' as const, value: 0, conversionRate: 0, trend: 'stable' as const }
+  ].map(c => {
+    const june = Math.floor(c.sales / 2);
+    const july = c.sales - june;
+    const dailySales: Record<string, Record<number, number>> = {
+      "2026-06": generateDailySales(june, 2026, 5),
+      "2026-07": generateDailySales(july, 2026, 6)
+    };
+    return { ...c, rank: 0, dailySales };
+  });
 
   const initialEad = [
-    { id: 101, rank: 1, name: 'Guilherme', avatar: 'GL', sales: 110, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 102, rank: 2, name: 'Caroline', avatar: 'CR', sales: 98, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 103, rank: 3, name: 'Mario', avatar: 'MR', sales: 92, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'stable' as const },
-    { id: 104, rank: 4, name: 'Alline', avatar: 'AL', sales: 85, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 105, rank: 5, name: 'Mariana', avatar: 'MN', sales: 80, status: 'vacation' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'down' as const },
-    { id: 106, rank: 6, name: 'Felipe', avatar: 'FL', sales: 72, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 107, rank: 7, name: 'Tamyres', avatar: 'TM', sales: 65, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'stable' as const },
-    { id: 108, rank: 8, name: 'Micheline', avatar: 'MC', sales: 58, status: 'vacation' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'up' as const },
-    { id: 109, rank: 9, name: 'Vinícius', avatar: 'VN', sales: 50, status: 'active' as const, region: 'Presidente Prudente', value: 0, conversionRate: 0, trend: 'down' as const }
-  ].map(c => ({ ...c, dailySales: generateDailySales(c.sales) }));
+    { id: 101, name: 'Guilherme', avatar: 'GL', sales: 110, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 102, name: 'Caroline', avatar: 'CR', sales: 98, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 103, name: 'Mario', avatar: 'MR', sales: 92, status: 'active' as const, value: 0, conversionRate: 0, trend: 'stable' as const },
+    { id: 104, name: 'Alline', avatar: 'AL', sales: 85, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 105, name: 'Mariana', avatar: 'MN', sales: 80, status: 'vacation' as const, value: 0, conversionRate: 0, trend: 'down' as const },
+    { id: 106, name: 'Felipe', avatar: 'FL', sales: 72, status: 'active' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 107, name: 'Tamyres', avatar: 'TM', sales: 65, status: 'active' as const, value: 0, conversionRate: 0, trend: 'stable' as const },
+    { id: 108, name: 'Micheline', avatar: 'MC', sales: 58, status: 'vacation' as const, value: 0, conversionRate: 0, trend: 'up' as const },
+    { id: 109, name: 'Vinícius', avatar: 'VN', sales: 50, status: 'active' as const, value: 0, conversionRate: 0, trend: 'down' as const }
+  ].map(c => {
+    const june = Math.floor(c.sales / 2);
+    const july = c.sales - june;
+    const dailySales: Record<string, Record<number, number>> = {
+      "2026-06": generateDailySales(june, 2026, 5),
+      "2026-07": generateDailySales(july, 2026, 6)
+    };
+    return { ...c, rank: 0, dailySales };
+  });
 
   const announcements: Announcement[] = [
     {
@@ -209,145 +225,189 @@ const loadDatabase = (): DashboardData => {
     }
   ];
 
-  const db = {
+  return {
     presencial: {
       ranking: initialPresencial,
-      metrics: calculateMetrics(initialPresencial, 300),
+      metrics: calculateMetrics(initialPresencial, 300, "2026-07"),
       lastUpdate: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     },
     ead: {
       ranking: initialEad,
-      metrics: calculateMetrics(initialEad, 700),
+      metrics: calculateMetrics(initialEad, 700, "2026-07"),
       lastUpdate: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     },
     announcements
   };
-
-  localStorage.setItem('univ_sales_dashboard_data', JSON.stringify(db));
-  return db;
 };
 
-let database: DashboardData = loadDatabase();
+export const fetchDashboardData = async (selectedMonth: string = "2026-07"): Promise<DashboardData> => {
+  // Fetch consultants from Supabase
+  const { data: consultantsData, error: cError } = await supabase
+    .from('consultants')
+    .select('*');
 
-const updateDynamicData = () => {
-  const enabled = localStorage.getItem('univ_sales_simulation_enabled') !== 'false';
-  if (!enabled) return;
+  if (cError) {
+    console.error("Error fetching consultants from Supabase:", cError);
+  }
+
+  // Fetch announcements from Supabase
+  const { data: announcementsData, error: aError } = await supabase
+    .from('announcements')
+    .select('*')
+    .order('id', { ascending: true });
+
+  if (aError) {
+    console.error("Error fetching announcements from Supabase:", aError);
+  }
+
+  const dbConsultants = consultantsData || [];
+  const dbAnnouncements = announcementsData || [];
+
+  // Map database format to frontend interface format
+  const mappedConsultants: Consultant[] = dbConsultants.map(c => ({
+    id: Number(c.id),
+    rank: 0, // rank will be computed after sorting
+    name: c.name,
+    avatar: c.avatar,
+    sales: c.sales, // Overall cumulative sales
+    dailySales: c.daily_sales || {}, // Nested monthly daily sales object
+    status: c.status,
+    value: Number(c.value),
+    conversionRate: Number(c.conversion_rate),
+    trend: c.trend,
+    lastSaleTime: c.last_sale_time || undefined
+  }));
+
+  // Separate Presencial and EAD using the database "type" field
+  const presencialRanking = mappedConsultants.filter(c => {
+    const dbItem = dbConsultants.find(dc => Number(dc.id) === c.id);
+    return dbItem?.type === 'presencial';
+  });
+
+  const eadRanking = mappedConsultants.filter(c => {
+    const dbItem = dbConsultants.find(dc => Number(dc.id) === c.id);
+    return dbItem?.type === 'ead';
+  });
+
+  // Sort and apply ranks BASED ON SELECTED MONTH'S SALES
+  const getMonthlySales = (c: Consultant) => {
+    const monthData = c.dailySales?.[selectedMonth] || {};
+    return Object.values(monthData).reduce((a, b) => a + b, 0);
+  };
+
+  presencialRanking.sort((a, b) => getMonthlySales(b) - getMonthlySales(a));
+  presencialRanking.forEach((c, idx) => {
+    c.rank = idx + 1;
+  });
+
+  eadRanking.sort((a, b) => getMonthlySales(b) - getMonthlySales(a));
+  eadRanking.forEach((c, idx) => {
+    c.rank = idx + 1;
+  });
 
   const now = new Date();
-  const dayOfWeek = now.getDay();
-  if (dayOfWeek === 0 || dayOfWeek === 6) return; // No simulated sales on Saturday and Sunday
+  const timeString = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  const isNewSale = Math.random() < 0.6;
-  if (isNewSale) {
-    const isEad = Math.random() > 0.4;
-    const todayDay = now.getDate(); // 1 to 31
+  return {
+    presencial: {
+      ranking: presencialRanking,
+      metrics: calculateMetrics(presencialRanking, 300, selectedMonth),
+      lastUpdate: timeString
+    },
+    ead: {
+      ranking: eadRanking,
+      metrics: calculateMetrics(eadRanking, 700, selectedMonth),
+      lastUpdate: timeString
+    },
+    announcements: dbAnnouncements.map(a => ({
+      id: Number(a.id),
+      title: a.title,
+      description: a.description,
+      date: a.date,
+      type: a.type,
+      author: a.author
+    }))
+  };
+};
 
-    if (isEad) {
-      const activeConsultants = database.ead.ranking.filter(c => c.status === 'active');
-      if (activeConsultants.length > 0) {
-        const index = Math.floor(Math.random() * activeConsultants.length);
-        const consultant = activeConsultants[index];
-        consultant.sales += 1;
-        if (!consultant.dailySales) {
-          consultant.dailySales = {};
-          for (let i = 1; i <= 31; i++) consultant.dailySales[i] = 0;
-        }
-        consultant.dailySales[todayDay] = (consultant.dailySales[todayDay] || 0) + 1;
-        consultant.lastSaleTime = 'Agora mesmo';
-        consultant.trend = 'up';
-        
-        database.ead.ranking.sort((a, b) => b.sales - a.sales);
-        database.ead.ranking.forEach((c, idx) => {
-          c.rank = idx + 1;
-        });
+export const saveDashboardData = async (newData: DashboardData) => {
+  // Combine Presencial and EAD lists to sync to consultants table
+  const allConsultants = [
+    ...newData.presencial.ranking.map(c => ({ ...c, type: 'presencial' })),
+    ...newData.ead.ranking.map(c => ({ ...c, type: 'ead' }))
+  ];
 
-        database.ead.metrics = calculateMetrics(database.ead.ranking, 700);
-        database.ead.lastUpdate = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      }
-    } else {
-      const activeConsultants = database.presencial.ranking.filter(c => c.status === 'active');
-      if (activeConsultants.length > 0) {
-        const index = Math.floor(Math.random() * activeConsultants.length);
-        const consultant = activeConsultants[index];
-        consultant.sales += 1;
-        if (!consultant.dailySales) {
-          consultant.dailySales = {};
-          for (let i = 1; i <= 31; i++) consultant.dailySales[i] = 0;
-        }
-        consultant.dailySales[todayDay] = (consultant.dailySales[todayDay] || 0) + 1;
-        consultant.lastSaleTime = 'Agora mesmo';
-        consultant.trend = 'up';
-        
-        database.presencial.ranking.sort((a, b) => b.sales - a.sales);
-        database.presencial.ranking.forEach((c, idx) => {
-          c.rank = idx + 1;
-        });
+  const dbConsultants = allConsultants.map(c => ({
+    id: c.id,
+    name: c.name,
+    avatar: c.avatar,
+    type: c.type,
+    sales: c.sales, // Overall cumulative sales
+    daily_sales: c.dailySales || {}, // Nested object
+    status: c.status,
+    value: c.value,
+    conversion_rate: c.conversionRate,
+    trend: c.trend,
+    last_sale_time: c.lastSaleTime || null
+  }));
 
-        database.presencial.metrics = calculateMetrics(database.presencial.ranking, 300);
-        database.presencial.lastUpdate = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      }
-    }
-    
-    localStorage.setItem('univ_sales_dashboard_data', JSON.stringify(database));
+  // Perform upsert of all consultants
+  const { error: cError } = await supabase
+    .from('consultants')
+    .upsert(dbConsultants);
+
+  if (cError) {
+    console.error("Error upserting consultants to Supabase:", cError);
   }
 
-  const formats = ['há 2 min', 'há 5 min', 'há 10 min', 'há 15 min', 'há 30 min', 'há 1 hora'];
-  let changedTimes = false;
-  database.presencial.ranking.forEach((c) => {
-    if (c.lastSaleTime !== 'Agora mesmo' && Math.random() < 0.15) {
-      c.lastSaleTime = formats[Math.floor(Math.random() * formats.length)];
-      changedTimes = true;
-    }
-  });
-  database.ead.ranking.forEach((c) => {
-    if (c.lastSaleTime !== 'Agora mesmo' && Math.random() < 0.15) {
-      c.lastSaleTime = formats[formats.length - 1];
-      changedTimes = true;
-    }
-  });
+  // Delete deleted announcements and upsert the current ones
+  const dbAnnouncements = newData.announcements.map(a => ({
+    id: a.id,
+    title: a.title,
+    description: a.description,
+    date: a.date,
+    type: a.type,
+    author: a.author
+  }));
 
-  if (changedTimes) {
-    localStorage.setItem('univ_sales_dashboard_data', JSON.stringify(database));
+  // Delete all announcements first
+  const { error: delError } = await supabase
+    .from('announcements')
+    .delete()
+    .neq('id', 0);
+
+  if (delError) {
+    console.error("Error clearing old announcements from Supabase:", delError);
+  }
+
+  if (dbAnnouncements.length > 0) {
+    const { error: insError } = await supabase
+      .from('announcements')
+      .insert(dbAnnouncements);
+
+    if (insError) {
+      console.error("Error inserting announcements into Supabase:", insError);
+    }
   }
 };
 
-export const fetchDashboardData = async (): Promise<DashboardData> => {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
-  const saved = localStorage.getItem('univ_sales_dashboard_data');
-  if (saved) {
-    try {
-      database = JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-  }
+export const resetDashboardData = async () => {
+  // Clear tables
+  const { error: delConsultantsErr } = await supabase
+    .from('consultants')
+    .delete()
+    .neq('id', 0);
+  if (delConsultantsErr) console.error(delConsultantsErr);
 
-  updateDynamicData();
-  return JSON.parse(JSON.stringify(database));
-};
+  const { error: delAnnouncementsErr } = await supabase
+    .from('announcements')
+    .delete()
+    .neq('id', 0);
+  if (delAnnouncementsErr) console.error(delAnnouncementsErr);
 
-export const saveDashboardData = (newData: DashboardData) => {
-  newData.presencial.ranking.sort((a, b) => b.sales - a.sales);
-  newData.presencial.ranking.forEach((c, idx) => {
-    c.rank = idx + 1;
-  });
-
-  newData.ead.ranking.sort((a, b) => b.sales - a.sales);
-  newData.ead.ranking.forEach((c, idx) => {
-    c.rank = idx + 1;
-  });
-
-  newData.presencial.metrics = calculateMetrics(newData.presencial.ranking, 300);
-  newData.ead.metrics = calculateMetrics(newData.ead.ranking, 700);
-
-  database = newData;
-  localStorage.setItem('univ_sales_dashboard_data', JSON.stringify(database));
-};
-
-export const resetDashboardData = () => {
-  localStorage.removeItem('univ_sales_dashboard_data');
-  database = loadDatabase();
+  // Load defaults and save them to Supabase
+  const defaultData = loadDefaultDatabase();
+  await saveDashboardData(defaultData);
 };
 
 export const setSimulationEnabled = (enabled: boolean) => {
@@ -355,7 +415,7 @@ export const setSimulationEnabled = (enabled: boolean) => {
 };
 
 export const getSimulationEnabled = (): boolean => {
-  return localStorage.getItem('univ_sales_simulation_enabled') !== 'false';
+  return localStorage.getItem('univ_sales_simulation_enabled') === 'true';
 };
 
 export const api = axios.create({

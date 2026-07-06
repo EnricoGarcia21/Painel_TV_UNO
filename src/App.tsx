@@ -131,7 +131,7 @@ function DashboardContent() {
     }
 
     let animationFrameId: number;
-    const scrollSpeed = 0.85; // slightly faster scroll speed for premium TV feel
+    const scrollSpeed = 0.35; // slower and smoother scroll speed for comfortable reading
 
     const scroll = () => {
       let container: HTMLDivElement | null = null;
@@ -211,11 +211,11 @@ function DashboardContent() {
     return () => clearInterval(timer);
   }, []);
 
-  // Bulletproof 30 seconds timer for tab alternation
+  // Bulletproof 45 seconds timer for tab alternation
   useEffect(() => {
     const interval = setInterval(() => {
       const elapsed = Date.now() - lastSwitchTimeRef.current;
-      const progress = (elapsed / 30000) * 100;
+      const progress = (elapsed / 45000) * 100;
       
       if (progress >= 100) {
         lastSwitchTimeRef.current = Date.now();

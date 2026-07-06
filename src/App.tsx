@@ -277,6 +277,35 @@ function DashboardContent() {
     <div className="max-w-[1920px] mx-auto p-6 space-y-6 flex flex-col min-h-[95vh] justify-between">
       
       <div className="space-y-6 flex-1 flex flex-col justify-start">
+        {(!import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL.includes('placeholder-project')) && (
+          <div className="w-full bg-amber-50 text-amber-900 border border-amber-200/80 px-5 py-3 rounded-2xl text-xs font-semibold flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
+            <span className="flex items-center gap-2">
+              ⚠️ <strong>Modo de Demonstração Ativo:</strong> O painel está exibindo dados locais simulados pois as variáveis de ambiente do Supabase (VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY) não foram configuradas nas chaves da Vercel.
+            </span>
+            <a 
+              href="https://vercel.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] uppercase font-black tracking-wider transition shrink-0"
+            >
+              Configurar na Vercel
+            </a>
+          </div>
+        )}
+
+        {import.meta.env.VITE_SUPABASE_URL && !import.meta.env.VITE_SUPABASE_URL.includes('placeholder-project') && data?.presencial?.ranking?.[0]?.sales === 45 && (
+          <div className="w-full bg-blue-50 text-blue-900 border border-blue-200/80 px-5 py-3 rounded-2xl text-xs font-semibold flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
+            <span className="flex items-center gap-2">
+              ℹ️ <strong>Banco de Dados Conectado (Sem Dados):</strong> O painel está conectado ao seu Supabase, mas as tabelas parecem estar vazias. O sistema está exibindo os dados padrões de demonstração.
+            </span>
+            <button 
+              onClick={() => window.location.hash = '#/admin'}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] uppercase font-black tracking-wider transition shrink-0 cursor-pointer"
+            >
+              Ir para Admin & Redefinir
+            </button>
+          </div>
+        )}
         {/* 1. Header (Glassmorphic Layout) */}
         <header className="glass-header rounded-2xl px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm border border-white/60">
           <div className="flex items-center gap-3">

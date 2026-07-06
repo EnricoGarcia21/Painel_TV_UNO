@@ -324,7 +324,8 @@ export const fetchDashboardData = async (selectedMonth: string = "2026-07"): Pro
   const dbConsultants = consultantsData || [];
   
   if (dbConsultants.length === 0) {
-    console.warn("No consultants found in Supabase. Falling back to local default database.");
+    console.warn("No consultants found in Supabase. Auto-seeding default database in the background.");
+    resetDashboardData().catch(err => console.error("Error auto-seeding database:", err));
     return loadDefaultDatabase();
   }
 

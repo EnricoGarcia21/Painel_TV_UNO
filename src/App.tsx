@@ -53,7 +53,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      staleTime: 5000,
+      staleTime: 6000,
     },
   },
 });
@@ -131,7 +131,7 @@ function DashboardContent() {
     }
 
     let animationFrameId: number;
-    const scrollSpeed = 0.35; // slower and smoother scroll speed for comfortable reading
+    const scrollSpeed = 0.15; // ultra-slow and stable scroll speed for TV presentation
 
     const scroll = () => {
       let container: HTMLDivElement | null = null;

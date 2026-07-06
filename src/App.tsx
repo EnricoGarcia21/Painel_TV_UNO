@@ -9,7 +9,9 @@ import {
   ArrowLeft,
   RefreshCw,
   Plus,
-  Megaphone
+  Megaphone,
+  LogOut,
+  BarChart3
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -24,10 +26,13 @@ import {
 } from './api/mockData';
 import type { Consultant, DashboardData, Announcement } from './api/mockData';
 import { supabase } from './api/supabaseClient';
+import type { Session } from '@supabase/supabase-js';
 import { cn } from './lib/utils';
 import { Card, CardContent } from './components/ui/Card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './components/ui/Dialog';
 import { AnnouncementCarousel } from './components/ui/AnnouncementCarousel';
+import Login from './components/Login';
+import DashboardTotals from './components/DashboardTotals';
 
 // React Query Client
 const queryClient = new QueryClient({
@@ -234,6 +239,15 @@ function DashboardContent() {
               <span className="text-xs font-bold text-slate-600 tracking-wide uppercase">Atualizações em Tempo Real</span>
             </div>
 
+            {/* Consolidated periods view button */}
+            <button
+              onClick={() => window.location.hash = '#/dashboard'}
+              className="flex items-center gap-2 px-4 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl border border-emerald-200/50 transition text-xs font-bold uppercase cursor-pointer active:scale-95 shadow-2xs"
+            >
+              <BarChart3 className="h-4 w-4 text-emerald-600" />
+              Consolidado
+            </button>
+
             {/* Admin navigation button */}
             <button
               onClick={() => window.location.hash = '#/admin'}
@@ -391,8 +405,6 @@ function DashboardContent() {
                                 </th>
                               ))}
                               <th className="py-4 px-4 font-black text-center w-28">Mês</th>
-                              <th className="py-4 px-4 font-black text-center w-28">Geral</th>
-                              <th className="py-4 px-4 font-black text-center w-32">Status</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -444,24 +456,6 @@ function DashboardContent() {
                                   <span className="text-lg font-black text-emerald-800 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200/50 shadow-3xs">
                                     {Object.values(consultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}
                                   </span>
-                                </td>
-                                <td className="py-4 px-4 text-center">
-                                  <span className="text-lg font-black text-slate-700 bg-slate-100 px-4 py-2 rounded-xl border border-slate-200 shadow-3xs">
-                                    {consultant.sales}
-                                  </span>
-                                </td>
-                                <td className="py-4 px-4 text-center">
-                                  {consultant.status === 'active' ? (
-                                    <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/50 shadow-3xs">
-                                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                      Ativo
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-extrabold bg-amber-50 text-amber-700 border border-amber-200/50 shadow-3xs">
-                                      <span className="h-2 w-2 rounded-full bg-amber-400"></span>
-                                      Férias
-                                    </span>
-                                  )}
                                 </td>
                               </tr>
                             ))}
@@ -529,8 +523,6 @@ function DashboardContent() {
                                 </th>
                               ))}
                               <th className="py-4 px-4 font-black text-center w-28">Mês</th>
-                              <th className="py-4 px-4 font-black text-center w-28">Geral</th>
-                              <th className="py-4 px-4 font-black text-center w-32">Status</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -582,24 +574,6 @@ function DashboardContent() {
                                   <span className="text-lg font-black text-orange-800 bg-orange-50 px-4 py-2 rounded-xl border border-orange-200/50 shadow-3xs">
                                     {Object.values(consultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}
                                   </span>
-                                </td>
-                                <td className="py-4 px-4 text-center">
-                                  <span className="text-lg font-black text-slate-700 bg-slate-100 px-4 py-2 rounded-xl border border-slate-200 shadow-3xs">
-                                    {consultant.sales}
-                                  </span>
-                                </td>
-                                <td className="py-4 px-4 text-center">
-                                  {consultant.status === 'active' ? (
-                                    <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/50 shadow-3xs">
-                                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                      Ativo
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-extrabold bg-amber-50 text-amber-700 border border-amber-200/50 shadow-3xs">
-                                      <span className="h-2 w-2 rounded-full bg-amber-400"></span>
-                                      Férias
-                                    </span>
-                                  )}
                                 </td>
                               </tr>
                             ))}
@@ -980,7 +954,7 @@ function AdminContent() {
           </div>
 
           {/* Date, Time and Month Selector */}
-          <div className="flex items-center gap-6 text-slate-700 font-medium">
+          <div className="flex items-center gap-6 text-slate-700 font-medium animate-fade-in">
             <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/50">
               <Calendar className="h-4 w-4 text-slate-500" />
               <select
@@ -999,6 +973,22 @@ function AdminContent() {
                 {format(time, 'HH:mm:ss')}
               </span>
             </div>
+            <div className="h-4 w-[1px] bg-slate-200" />
+            <button
+              onClick={() => {
+                if (window.confirm("Deseja realmente sair?")) {
+                  localStorage.removeItem('uno_mock_session');
+                  supabase.auth.signOut().then(() => {
+                    window.location.reload();
+                  });
+                }
+              }}
+              className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200/60 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition cursor-pointer active:scale-95 shadow-2xs"
+              title="Sair da sessão"
+            >
+              <LogOut className="h-4 w-4" />
+              Sair
+            </button>
           </div>
         </header>
 
@@ -1577,8 +1567,47 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   }
 }
 
+function DashboardTotalsWrapper() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['dashboardData', '2026-07'],
+    queryFn: () => fetchDashboardData('2026-07'),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-950 text-white font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
+          <p className="text-lg font-medium animate-pulse text-slate-300">Carregando dados consolidados...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-red-950 text-red-200">
+        <div className="text-center p-8 glass-card border-red-500 max-w-md">
+          <h2 className="text-2xl font-bold mb-4">Erro de Carregamento</h2>
+          <p className="mb-4">Não foi possível carregar os dados consolidados.</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-red-800 text-white rounded-lg hover:bg-red-700 transition"
+          >
+            Tentar Novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <DashboardTotals data={data} />;
+}
+
 export default function App() {
   const [hash, setHash] = useState(window.location.hash);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
     const handleHashChange = () => setHash(window.location.hash);
@@ -1611,12 +1640,60 @@ export default function App() {
     };
   }, []);
 
+  // Handle Supabase Auth Session & Mock session fallback
+  useEffect(() => {
+    const isMock = localStorage.getItem('uno_mock_session') === 'true';
+    if (isMock) {
+      setSession({
+        user: { email: 'enricogarcia@unoeste.br', id: 'mock-admin' },
+        expires_at: 9999999999
+      } as any);
+      setAuthLoading(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (localStorage.getItem('uno_mock_session') === 'true') {
+        return;
+      }
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   const isAdmin = hash === '#/admin';
+  const isDashboard = hash === '#/dashboard';
 
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        {isAdmin ? <AdminContent /> : <DashboardContent />}
+        {isAdmin ? (
+          authLoading ? (
+            <div className="flex h-screen w-screen items-center justify-center bg-slate-950 text-white font-sans">
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-12 w-12 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
+                <p className="text-lg font-medium animate-pulse text-slate-300">Verificando autenticação...</p>
+              </div>
+            </div>
+          ) : session ? (
+            <AdminContent />
+          ) : (
+            <Login />
+          )
+        ) : isDashboard ? (
+          <DashboardTotalsWrapper />
+        ) : (
+          <DashboardContent />
+        )}
       </QueryClientProvider>
     </ErrorBoundary>
   );

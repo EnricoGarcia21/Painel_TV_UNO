@@ -322,6 +322,12 @@ export const fetchDashboardData = async (selectedMonth: string = "2026-07"): Pro
   }
 
   const dbConsultants = consultantsData || [];
+  
+  if (dbConsultants.length === 0) {
+    console.warn("No consultants found in Supabase. Falling back to local default database.");
+    return loadDefaultDatabase();
+  }
+
   const dbAnnouncements = announcementsData || [];
 
   // Map database format to frontend interface format

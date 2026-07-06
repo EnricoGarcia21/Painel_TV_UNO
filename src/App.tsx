@@ -1097,7 +1097,7 @@ function AdminContent() {
     setAdminStatusMessage(null);
 
     try {
-      const { data: signUpData, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email: newAdminEmail,
         password: newAdminPassword,
       });

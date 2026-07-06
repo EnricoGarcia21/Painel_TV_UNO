@@ -33,6 +33,13 @@ export interface Announcement {
   author: string;
 }
 
+export interface CourseSale {
+  id: number;
+  name: string;
+  type: 'presencial' | 'ead';
+  sales: number;
+}
+
 export interface DashboardData {
   presencial: {
     ranking: Consultant[];
@@ -45,6 +52,7 @@ export interface DashboardData {
     lastUpdate: string;
   };
   announcements: Announcement[];
+  courses?: CourseSale[];
 }
 
 const calculateMetrics = (ranking: Consultant[], goal: number, monthStr: string = "2026-07"): Metric => {
@@ -142,6 +150,43 @@ export const adjustDailySales = (consultant: Consultant, newMonthSales: number, 
   consultant.sales = totalSales;
 };
 
+export const presencialCourseNames = [
+  "Administracao", "Agronomia", "Analise_desenvolvimento_sistema", "Arquitetura_urbanismo",
+  "Biomedicina", "Biotecnologia", "Ciencias_computacao", "Ciencias_biologicas - Bacharelado",
+  "Ciencias_biologicas - Licenciatura", "Ciencias_contabeis", "Comunicacao_social_publidade_propaganda",
+  "Comunicacao_social_jornalismo", "Design", "Design_grafico", "Direito", "Educacao_fisica - Bacharelado",
+  "Educacao_fisica - Licenciatura", "Enfermagem", "Engenharia_civil", "Engenharia_producao",
+  "Engenharia_eletrica", "Engenharia_mecanica", "Engenharia_mecatronica", "Engenharia_quimica",
+  "Estetica_cosmetica", "Farmacia", "Fisioterapia", "Fonoaudiologia", "Gastronomia", "Marketing",
+  "Medicina_veterinaria", "Nutricao", "Odontologia", "Pedagogia", "Psicologia", "Sistemas_informacao",
+  "Terapia_Ocupacional", "Zootecnia"
+];
+
+export const eadCourseNames = [
+  "Administracao - EAD", "Agrocomputacao - EAD", "Agronomia - EAD", "Analise_desenvolvimento_sistema - EAD",
+  "Arquitetura_urbanismo - EAD", "Artes_visuais - Licenciatura - EAD", "Automação_Industrial - EAD",
+  "Banco_de_Dados - EAD", "Biomedicina - EAD", "Ciencias_computacao - EAD", "Ciencias_biologicas - Bacharelado - EAD",
+  "Ciencias_biologicas - Licenciatura - EAD", "Ciencias_contabeis - EAD", "Ciências_Econômicas - EAD",
+  "Comercio_exterior - EAD", "Design_interiores - EAD", "Design_moda - EAD", "Design_grafico - EAD",
+  "Educacao_financeira - EAD", "Educacao_fisica - Bacharelado - EAD", "Engenharia_civil - EAD",
+  "Engenharia_producao - EAD", "Engenharia_software - EAD", "Engenharia_eletrica - EAD",
+  "Engenharia_mecanica - EAD", "Engenharia_mecatronica - EAD", "Estetica_cosmetica - EAD",
+  "Farmacia - EAD", "Fisioterapia - EAD", "Fonoaudiologia - EAD", "Fotografia - EAD",
+  "Gastronomia - EAD", "Gestão_Ambiental - EAD", "Gestao_comercial - EAD", "Gestão_da_Produção_Industrial - EAD",
+  "Gestao_qualidade - EAD", "Gestão_da_Segurança_Privada - EAD", "Gestao_TI - EAD",
+  "Gestao_recursos_humanos - EAD", "Gestão_de_Serviços_Judiciais_e_Notariais - EAD",
+  "Gestao_agronegocio - EAD", "Gestao_financeira - EAD", "Gestao_hospitalar - EAD",
+  "Gestão_Portuária - EAD", "Gestao_publica - EAD", "Historia - Licenciatura - EAD",
+  "Inteligência_Artificial - EAD", "Comunicacao_social_jornalismo - EAD",
+  "Letras_portugues/ingles - Licenciatura - EAD", "Logistica - EAD", "Marketing - EAD",
+  "Matematica - Licenciatura - EAD", "Musica - Licenciatura- EAD", "Nutricao - EAD",
+  "Pedagogia - EAD", "Processos_gerenciais - EAD", "Psicopedagogia - EAD",
+  "Comunicacao_social_publidade_propaganda - EAD", "Quimica - Bacharelado- EAD",
+  "Quimica - Licenciatura - EAD", "Radiologia - EAD", "Relações_Internacionais - EAD",
+  "Segurança_Cibernética - EAD", "Serviço_Social - EAD", "Sistemas_para_Internet - EAD",
+  "Teologia - EAD", "Terapia_Ocupacional - EAD", "Zootecnia - EAD"
+];
+
 // Default starting database with real names for reset, containing Jun 2026 and Jul 2026 data
 const loadDefaultDatabase = (): DashboardData => {
   const initialPresencial = [
@@ -225,6 +270,21 @@ const loadDefaultDatabase = (): DashboardData => {
     }
   ];
 
+  const defaultCourses: CourseSale[] = [
+    ...presencialCourseNames.map((name, index) => ({
+      id: index + 1,
+      name,
+      type: 'presencial' as const,
+      sales: 0
+    })),
+    ...eadCourseNames.map((name, index) => ({
+      id: index + 100,
+      name,
+      type: 'ead' as const,
+      sales: 0
+    }))
+  ];
+
   return {
     presencial: {
       ranking: initialPresencial,
@@ -236,7 +296,8 @@ const loadDefaultDatabase = (): DashboardData => {
       metrics: calculateMetrics(initialEad, 700, "2026-07"),
       lastUpdate: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     },
-    announcements
+    announcements,
+    courses: defaultCourses
   };
 };
 
@@ -308,6 +369,47 @@ export const fetchDashboardData = async (selectedMonth: string = "2026-07"): Pro
   const now = new Date();
   const timeString = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+  let mappedCourses: CourseSale[] = [];
+  const { data: coursesData, error: coError } = await supabase
+    .from('course_sales')
+    .select('*');
+
+  if (coError || !coursesData || coursesData.length === 0) {
+    // Try localStorage fallback
+    const localFallback = localStorage.getItem('local_courses_fallback');
+    if (localFallback) {
+      try {
+        mappedCourses = JSON.parse(localFallback);
+      } catch (e) {
+        mappedCourses = [];
+      }
+    }
+
+    if (mappedCourses.length === 0) {
+      mappedCourses = [
+        ...presencialCourseNames.map((name, index) => ({
+          id: index + 1,
+          name,
+          type: 'presencial' as const,
+          sales: 0
+        })),
+        ...eadCourseNames.map((name, index) => ({
+          id: index + 100,
+          name,
+          type: 'ead' as const,
+          sales: 0
+        }))
+      ];
+    }
+  } else {
+    mappedCourses = coursesData.map(c => ({
+      id: Number(c.id),
+      name: c.name,
+      type: c.type,
+      sales: Number(c.sales || 0)
+    }));
+  }
+
   return {
     presencial: {
       ranking: presencialRanking,
@@ -326,7 +428,8 @@ export const fetchDashboardData = async (selectedMonth: string = "2026-07"): Pro
       date: a.date,
       type: a.type,
       author: a.author
-    }))
+    })),
+    courses: mappedCourses
   };
 };
 
@@ -387,6 +490,27 @@ export const saveDashboardData = async (newData: DashboardData) => {
 
     if (insError) {
       console.error("Error inserting announcements into Supabase:", insError);
+    }
+  }
+
+  // Sync course_sales if present
+  if (newData.courses && newData.courses.length > 0) {
+    const dbCourses = newData.courses.map(c => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      sales: c.sales
+    }));
+
+    // Save to local localStorage as fallback
+    localStorage.setItem('local_courses_fallback', JSON.stringify(dbCourses));
+
+    const { error: coError } = await supabase
+      .from('course_sales')
+      .upsert(dbCourses);
+
+    if (coError) {
+      console.warn("Could not sync course_sales to Supabase (normal if table does not exist):", coError.message);
     }
   }
 };

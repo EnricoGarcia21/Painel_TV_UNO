@@ -1,4 +1,4 @@
-import { useState, useEffect, Component, useRef } from 'react';
+import { useState, useEffect, Component, useRef, useMemo } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -34,6 +34,20 @@ import { AnnouncementCarousel } from './components/ui/AnnouncementCarousel';
 import Login from './components/Login';
 import DashboardTotals from './components/DashboardTotals';
 
+export const formatCourseName = (name: string) => {
+  return name
+    .replace(/_/g, ' ')
+    .replace(/\s*-\s*EAD/i, '')
+    .split(' ')
+    .map(word => {
+      if (!word) return '';
+      const lower = word.toLowerCase();
+      if (['de', 'da', 'do', 'e', 'para', 'o', 'com', 'social'].includes(lower)) return lower;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+};
+
 // React Query Client
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,9 +72,17 @@ function DashboardContent() {
   });
   
   // Carousel states
-  const [activeTab, setActiveTab] = useState<'presencial' | 'ead'>('presencial');
+  const [activeTab, setActiveTab] = useState<'presencial' | 'presencial-cursos' | 'ead' | 'ead-cursos'>('presencial');
   const [timerProgress, setTimerProgress] = useState(0);
   const lastSwitchTimeRef = useRef(Date.now());
+
+  // Top courses computation
+  const topCourses = useMemo(() => {
+    if (!data?.courses) return [];
+    const courseType = activeTab.startsWith('presencial') ? 'presencial' : 'ead';
+    const filtered = data.courses.filter(c => c.type === courseType);
+    return [...filtered].sort((a, b) => b.sales - a.sales).slice(0, 10);
+  }, [data, activeTab]);
 
   const todayDay = time.getDate(); // 1 to 31
   const currentYear = time.getFullYear();
@@ -82,16 +104,28 @@ function DashboardContent() {
 
   const presencialScrollRef = useRef<HTMLDivElement | null>(null);
   const eadScrollRef = useRef<HTMLDivElement | null>(null);
+  const presencialCoursesScrollRef = useRef<HTMLDivElement | null>(null);
+  const eadCoursesScrollRef = useRef<HTMLDivElement | null>(null);
   const scrollPosRef = useRef(0);
   const isPausedRef = useRef(false);
 
-  // Auto-scroll loop for active tab listing (Presencial or EAD)
+  // Auto-scroll loop for active tab listing (Presencial, EAD, or Course list)
   useEffect(() => {
     // Reset scroll when tab changes
     scrollPosRef.current = 0;
     isPausedRef.current = false;
 
-    const initialContainer = activeTab === 'presencial' ? presencialScrollRef.current : eadScrollRef.current;
+    let initialContainer: HTMLDivElement | null = null;
+    if (activeTab === 'presencial') {
+      initialContainer = presencialScrollRef.current;
+    } else if (activeTab === 'presencial-cursos') {
+      initialContainer = presencialCoursesScrollRef.current;
+    } else if (activeTab === 'ead') {
+      initialContainer = eadScrollRef.current;
+    } else if (activeTab === 'ead-cursos') {
+      initialContainer = eadCoursesScrollRef.current;
+    }
+
     if (initialContainer) {
       initialContainer.scrollTop = 0;
     }
@@ -100,7 +134,17 @@ function DashboardContent() {
     const scrollSpeed = 0.85; // slightly faster scroll speed for premium TV feel
 
     const scroll = () => {
-      const container = activeTab === 'presencial' ? presencialScrollRef.current : eadScrollRef.current;
+      let container: HTMLDivElement | null = null;
+      if (activeTab === 'presencial') {
+        container = presencialScrollRef.current;
+      } else if (activeTab === 'presencial-cursos') {
+        container = presencialCoursesScrollRef.current;
+      } else if (activeTab === 'ead') {
+        container = eadScrollRef.current;
+      } else if (activeTab === 'ead-cursos') {
+        container = eadCoursesScrollRef.current;
+      }
+
       if (!container) {
         animationFrameId = requestAnimationFrame(scroll);
         return;
@@ -128,7 +172,17 @@ function DashboardContent() {
         // Pause at the bottom for 3s, then return to the first item
         setTimeout(() => {
           scrollPosRef.current = 0;
-          const containerRef = activeTab === 'presencial' ? presencialScrollRef.current : eadScrollRef.current;
+          let containerRef: HTMLDivElement | null = null;
+          if (activeTab === 'presencial') {
+            containerRef = presencialScrollRef.current;
+          } else if (activeTab === 'presencial-cursos') {
+            containerRef = presencialCoursesScrollRef.current;
+          } else if (activeTab === 'ead') {
+            containerRef = eadScrollRef.current;
+          } else if (activeTab === 'ead-cursos') {
+            containerRef = eadCoursesScrollRef.current;
+          }
+
           if (containerRef) {
             containerRef.scrollTop = 0;
           }
@@ -166,7 +220,12 @@ function DashboardContent() {
       if (progress >= 100) {
         lastSwitchTimeRef.current = Date.now();
         setTimerProgress(0);
-        setActiveTab((current) => (current === 'presencial' ? 'ead' : 'presencial'));
+        setActiveTab((current) => {
+          if (current === 'presencial') return 'presencial-cursos';
+          if (current === 'presencial-cursos') return 'ead';
+          if (current === 'ead') return 'ead-cursos';
+          return 'presencial';
+        });
       } else {
         setTimerProgress(progress);
       }
@@ -175,7 +234,7 @@ function DashboardContent() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleTabChange = (tab: 'presencial' | 'ead') => {
+  const handleTabChange = (tab: 'presencial' | 'presencial-cursos' | 'ead' | 'ead-cursos') => {
     setActiveTab(tab);
     lastSwitchTimeRef.current = Date.now();
     setTimerProgress(0);
@@ -289,30 +348,54 @@ function DashboardContent() {
         {/* 3. Carousel Tab Controller (Navigation + Progress countdown) */}
         <section className="w-full">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/70 border border-slate-200/50 rounded-2xl p-2.5 shadow-2xs glass-card">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button 
                 onClick={() => handleTabChange('presencial')}
                 className={cn(
-                  "px-6 py-3 rounded-xl text-sm font-extrabold transition-all duration-300 flex items-center gap-2 cursor-pointer active:scale-98",
+                  "px-5 py-2.5 rounded-xl text-xs font-black transition-all duration-300 flex items-center gap-1.5 cursor-pointer active:scale-98 shadow-3xs",
                   activeTab === 'presencial' 
-                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20" 
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/25" 
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 bg-white border border-slate-200"
                 )}
               >
-                <span className={cn("h-2.5 w-2.5 rounded-full", activeTab === 'presencial' ? "bg-white animate-pulse" : "bg-emerald-500")}></span>
-                Ranking Presencial (Canal Físico)
+                <span className={cn("h-2 w-2 rounded-full", activeTab === 'presencial' ? "bg-white animate-pulse" : "bg-emerald-500")}></span>
+                Presencial (Agentes)
+              </button>
+              <button 
+                onClick={() => handleTabChange('presencial-cursos')}
+                className={cn(
+                  "px-5 py-2.5 rounded-xl text-xs font-black transition-all duration-300 flex items-center gap-1.5 cursor-pointer active:scale-98 shadow-3xs",
+                  activeTab === 'presencial-cursos' 
+                    ? "bg-emerald-800 text-white shadow-md shadow-emerald-600/25" 
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 bg-white border border-slate-200"
+                )}
+              >
+                <span className={cn("h-2 w-2 rounded-full", activeTab === 'presencial-cursos' ? "bg-white animate-pulse" : "bg-teal-500")}></span>
+                Presencial (Cursos)
               </button>
               <button 
                 onClick={() => handleTabChange('ead')}
                 className={cn(
-                  "px-6 py-3 rounded-xl text-sm font-extrabold transition-all duration-300 flex items-center gap-2 cursor-pointer active:scale-98",
+                  "px-5 py-2.5 rounded-xl text-xs font-black transition-all duration-300 flex items-center gap-1.5 cursor-pointer active:scale-98 shadow-3xs",
                   activeTab === 'ead' 
-                    ? "bg-orange-500 text-white shadow-md shadow-orange-500/20" 
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    ? "bg-orange-500 text-white shadow-md shadow-orange-500/25" 
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 bg-white border border-slate-200"
                 )}
               >
-                <span className={cn("h-2.5 w-2.5 rounded-full", activeTab === 'ead' ? "bg-white animate-pulse" : "bg-orange-500")}></span>
-                Ranking EAD (Canal Digital)
+                <span className={cn("h-2 w-2 rounded-full", activeTab === 'ead' ? "bg-white animate-pulse" : "bg-orange-500")}></span>
+                EAD (Agentes)
+              </button>
+              <button 
+                onClick={() => handleTabChange('ead-cursos')}
+                className={cn(
+                  "px-5 py-2.5 rounded-xl text-xs font-black transition-all duration-300 flex items-center gap-1.5 cursor-pointer active:scale-98 shadow-3xs",
+                  activeTab === 'ead-cursos' 
+                    ? "bg-orange-700 text-white shadow-md shadow-orange-650/25" 
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 bg-white border border-slate-200"
+                )}
+              >
+                <span className={cn("h-2 w-2 rounded-full", activeTab === 'ead-cursos' ? "bg-white animate-pulse" : "bg-amber-500")}></span>
+                EAD (Cursos)
               </button>
             </div>
 
@@ -327,7 +410,7 @@ function DashboardContent() {
                 <div 
                   className={cn(
                     "h-full rounded-full transition-all duration-100 ease-linear",
-                    activeTab === 'presencial' ? "bg-emerald-500" : "bg-orange-500"
+                    activeTab.startsWith('presencial') ? "bg-emerald-500" : "bg-orange-500"
                   )}
                   style={{ width: `${timerProgress}%` }}
                 />
@@ -341,9 +424,9 @@ function DashboardContent() {
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
-              initial={{ opacity: 0, x: activeTab === 'presencial' ? -120 : 120 }}
+              initial={{ opacity: 0, x: activeTab.startsWith('presencial') ? -120 : 120 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: activeTab === 'presencial' ? 120 : -120 }}
+              exit={{ opacity: 0, x: activeTab.startsWith('presencial') ? 120 : -120 }}
               transition={{ type: 'spring', duration: 0.5, bounce: 0.05 }}
               className="w-full flex-1 flex flex-col justify-stretch"
             >
@@ -368,104 +451,180 @@ function DashboardContent() {
                     </div>
                   </div>
 
-                  <CardContent className="p-6 flex flex-col gap-6 flex-1 w-full">
+                  <CardContent className="p-6 flex flex-col gap-6 flex-1 w-full animate-fadeIn">
                     <div className="w-full space-y-4">
-                      <div className="flex flex-wrap gap-4 items-center justify-between text-xs font-bold text-slate-500">
-                        <p className="uppercase tracking-wider text-sm font-extrabold text-slate-700">Quadro Classificatório - Presencial</p>
-                        <div className="flex gap-3 text-xs">
-                          <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 px-3.5 py-1.5 rounded-full border border-emerald-200/50 font-extrabold shadow-2xs">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                            {data.presencial.ranking.filter(c => c.status === 'active').length} Ativos
-                          </span>
-                          <span className="flex items-center gap-1.5 bg-amber-50 text-amber-800 px-3.5 py-1.5 rounded-full border border-amber-200/50 font-extrabold shadow-2xs">
-                            <span className="h-2 w-2 rounded-full bg-amber-400"></span>
-                            {data.presencial.ranking.filter(c => c.status === 'vacation').length} Férias
-                          </span>
+                      {/* Left: Consultants Table */}
+                      <div className="w-full space-y-4 overflow-hidden">
+                        <div className="flex flex-wrap gap-4 items-center justify-between text-xs font-bold text-slate-500">
+                          <p className="uppercase tracking-wider text-sm font-extrabold text-slate-700">Quadro Classificatório - Presencial</p>
+                          <div className="flex gap-3 text-xs">
+                            <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 px-3.5 py-1.5 rounded-full border border-emerald-200/50 font-extrabold shadow-2xs">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                              {data.presencial.ranking.filter(c => c.status === 'active').length} Ativos
+                            </span>
+                            <span className="flex items-center gap-1.5 bg-amber-50 text-amber-800 px-3.5 py-1.5 rounded-full border border-amber-200/50 font-extrabold shadow-2xs">
+                              <span className="h-2 w-2 rounded-full bg-amber-400"></span>
+                              {data.presencial.ranking.filter(c => c.status === 'vacation').length} Férias
+                            </span>
+                          </div>
                         </div>
-                      </div>
 
-                      <div 
-                        ref={presencialScrollRef}
-                        className="overflow-x-auto overflow-y-auto w-full max-h-[520px] rounded-2xl border border-slate-100 bg-white shadow-sm scrollbar-thin"
-                      >
-                        <table className="w-full min-w-[1400px] border-collapse text-left">
-                          <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-100 shadow-3xs">
-                            <tr className="text-slate-500 text-sm font-black uppercase tracking-wider">
-                              <th className="py-4 px-4 font-black w-24 text-center">Pos</th>
-                              <th className="py-4 px-4 font-black text-base">Consultor</th>
-                              {weekdays.map((day) => (
-                                <th 
-                                  key={day} 
-                                  className={cn(
-                                    "py-4 px-1.5 font-black text-center text-xs min-w-[36px] transition-colors duration-300 border-l border-slate-200/60",
-                                    day === todayDay && isCurrentMonth && "text-emerald-700 bg-emerald-100/50 font-black ring-1 ring-emerald-500/20"
-                                  )}
-                                >
-                                  {day}
-                                </th>
-                              ))}
-                              <th className="py-4 px-4 font-black text-center w-28">Mês</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {data.presencial.ranking.map((consultant, idx) => (
-                              <tr 
-                                key={consultant.id}
-                                onClick={() => handleConsultantClick(consultant)}
-                                className={cn(
-                                  "group transition-colors cursor-pointer",
-                                  idx % 2 === 0 ? "bg-white" : "bg-emerald-50/20",
-                                  "hover:bg-emerald-50/60"
-                                )}
-                              >
-                                <td className="py-4 px-4 text-center">
-                                  <span className={cn(
-                                    "inline-flex items-center justify-center w-12 h-12 rounded-full text-lg font-black",
-                                    consultant.rank === 1 ? "bg-amber-100 text-amber-900 ring-2 ring-amber-400/80 shadow-xs" :
-                                    consultant.rank === 2 ? "bg-slate-200 text-slate-900 ring-2 ring-slate-400/80 shadow-xs" :
-                                    consultant.rank === 3 ? "bg-orange-100 text-orange-900 ring-2 ring-orange-400/80 shadow-xs" :
-                                    "bg-slate-100/70 text-slate-600 border border-slate-200/30"
-                                  )}>
-                                    {consultant.rank}º
-                                  </span>
-                                </td>
-                                <td className="py-4 px-4">
-                                  <div className="flex items-center gap-4">
-                                    <div className="h-13 w-13 rounded-full bg-emerald-50 flex items-center justify-center font-bold text-base text-emerald-800 border-2 border-emerald-100/60 shadow-3xs">
-                                      {consultant.avatar}
-                                    </div>
-                                    <div>
-                                      <p className="text-xl font-black text-slate-900 group-hover:text-emerald-700 transition-colors tracking-tight">
-                                        {consultant.name}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </td>
+                        <div 
+                          ref={presencialScrollRef}
+                          className="overflow-x-auto overflow-y-auto w-full max-h-[520px] rounded-2xl border border-slate-100 bg-white shadow-sm scrollbar-thin"
+                        >
+                          <table className="w-full min-w-[1400px] border-collapse text-left">
+                            <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-100 shadow-3xs">
+                              <tr className="text-slate-500 text-sm font-black uppercase tracking-wider">
+                                <th className="py-4 px-4 font-black w-24 text-center">Pos</th>
+                                <th className="py-4 px-4 font-black text-base">Consultor</th>
                                 {weekdays.map((day) => (
-                                  <td 
+                                  <th 
                                     key={day} 
                                     className={cn(
-                                      "py-4 px-1.5 text-center font-black text-base transition-colors duration-300 border-l border-slate-100",
-                                      day === todayDay && isCurrentMonth ? "bg-emerald-50/40 text-emerald-800 font-black" : "text-slate-600"
+                                      "py-4 px-1.5 font-black text-center text-xs min-w-[36px] transition-colors duration-300 border-l border-slate-200/60",
+                                      day === todayDay && isCurrentMonth && "text-emerald-700 bg-emerald-100/50 font-black ring-1 ring-emerald-500/20"
                                     )}
                                   >
-                                    {consultant.dailySales?.[selectedMonth]?.[day] ?? 0}
-                                  </td>
+                                    {day}
+                                  </th>
                                 ))}
-                                <td className="py-4 px-4 text-center">
-                                  <span className="text-lg font-black text-emerald-800 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200/50 shadow-3xs">
-                                    {Object.values(consultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}
-                                  </span>
-                                </td>
+                                <th className="py-4 px-4 font-black text-center w-28">Mês</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {data.presencial.ranking.map((consultant, idx) => (
+                                <tr 
+                                  key={consultant.id}
+                                  onClick={() => handleConsultantClick(consultant)}
+                                  className={cn(
+                                    "group transition-colors cursor-pointer",
+                                    idx % 2 === 0 ? "bg-white" : "bg-emerald-50/20",
+                                    "hover:bg-emerald-50/60"
+                                  )}
+                                >
+                                  <td className="py-4 px-4 text-center">
+                                    <span className={cn(
+                                      "inline-flex items-center justify-center w-12 h-12 rounded-full text-lg font-black",
+                                      consultant.rank === 1 ? "bg-amber-100 text-amber-900 ring-2 ring-amber-400/80 shadow-xs" :
+                                      consultant.rank === 2 ? "bg-slate-200 text-slate-900 ring-2 ring-slate-400/80 shadow-xs" :
+                                      consultant.rank === 3 ? "bg-orange-100 text-orange-955 border-orange-300 shadow-xs" :
+                                      "bg-slate-100/70 text-slate-600 border border-slate-200/30"
+                                    )}>
+                                      {consultant.rank}º
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-4">
+                                    <div className="flex items-center gap-4">
+                                      <div className="h-13 w-13 rounded-full bg-emerald-50 flex items-center justify-center font-bold text-base text-emerald-800 border-2 border-emerald-100/60 shadow-3xs">
+                                        {consultant.avatar}
+                                      </div>
+                                      <div>
+                                        <p className="text-xl font-black text-slate-900 group-hover:text-emerald-700 transition-colors tracking-tight">
+                                          {consultant.name}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  {weekdays.map((day) => (
+                                    <td 
+                                      key={day} 
+                                      className={cn(
+                                        "py-4 px-1.5 text-center font-black text-base transition-colors duration-300 border-l border-slate-100",
+                                        day === todayDay && isCurrentMonth ? "bg-emerald-50/40 text-emerald-800 font-black" : "text-slate-600"
+                                      )}
+                                    >
+                                      {consultant.dailySales?.[selectedMonth]?.[day] ?? 0}
+                                    </td>
+                                  ))}
+                                  <td className="py-4 px-4 text-center">
+                                    <span className="text-lg font-black text-emerald-800 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200/50 shadow-3xs">
+                                      {Object.values(consultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
-              ) : (
+              ) : activeTab === 'presencial-cursos' ? (
+                <Card className="w-full flex-1 flex flex-col justify-between glow-presencial border-green-200/40 p-2">
+                  {/* Card Header */}
+                  <div className="p-6 pb-2 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/50">
+                        Canal Físico
+                      </span>
+                      <h2 className="text-3xl font-extrabold text-slate-950 font-display mt-2">
+                        Ranking Cursos Presenciais
+                      </h2>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] text-slate-500 font-medium">Período selecionado</p>
+                      <p className="text-sm font-bold text-emerald-600 font-mono">
+                        {selectedMonth === '2026-06' ? 'Junho / 2026' : 'Julho / 2026'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <CardContent className="p-6 flex flex-col gap-6 flex-1 w-full animate-fadeIn">
+                    <div className="w-full space-y-4">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                        <p className="uppercase tracking-wider text-sm font-extrabold text-slate-700">Top 10 Cursos Mais Matriculados</p>
+                      </div>
+
+                      <div ref={presencialCoursesScrollRef} className="w-full rounded-2xl border border-slate-100 bg-white shadow-sm pr-1 max-h-[520px] overflow-y-auto scrollbar-thin">
+                        <div className="divide-y divide-slate-100 min-w-[800px] p-2">
+                          {topCourses.map((course, index) => {
+                            const maxSales = topCourses[0]?.sales || 1;
+                            const percentage = Math.round((course.sales / maxSales) * 100);
+                            return (
+                              <div key={course.id} className="flex items-center justify-between py-4 px-6 hover:bg-slate-50/50 transition-colors">
+                                {/* Position, icon and name */}
+                                <div className="flex items-center gap-6 w-1/3 shrink-0">
+                                  <span className={cn(
+                                    "inline-flex items-center justify-center w-12 h-12 rounded-full text-lg font-black shrink-0 shadow-3xs",
+                                    index === 0 ? "bg-amber-100 text-amber-900 ring-2 ring-amber-400/80 shadow-xs" :
+                                    index === 1 ? "bg-slate-200 text-slate-900 ring-2 ring-slate-400/80 shadow-xs" :
+                                    index === 2 ? "bg-orange-100 text-orange-950 border-orange-300 shadow-xs" :
+                                    "bg-slate-100/70 text-slate-600 border border-slate-200/30"
+                                  )}>
+                                    {index + 1}º
+                                  </span>
+                                  <span className="text-xl font-black text-slate-900 tracking-tight">
+                                    {formatCourseName(course.name)}
+                                  </span>
+                                </div>
+
+                                {/* Progress bar */}
+                                <div className="flex-1 px-8">
+                                  <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden border border-slate-200/30">
+                                    <div 
+                                      className="h-full rounded-full bg-emerald-600 transition-all duration-500 shadow-3xs" 
+                                      style={{ width: `${percentage}%` }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Total Sales */}
+                                <div className="w-32 text-right shrink-0">
+                                  <span className="text-2xl font-black text-emerald-800 bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-250/50 shadow-3xs font-mono">
+                                    {course.sales}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : activeTab === 'ead' ? (
                 <Card className="w-full flex-1 flex flex-col justify-between glow-ead border-orange-200/40 p-2">
                   {/* Card Header */}
                   <div className="p-6 pb-2 flex items-center justify-between">
@@ -486,7 +645,7 @@ function DashboardContent() {
                     </div>
                   </div>
 
-                  <CardContent className="p-6 flex flex-col gap-6 flex-1 w-full">
+                  <CardContent className="p-6 flex flex-col gap-6 flex-1 w-full animate-fadeIn">
                     <div className="w-full space-y-4">
                       <div className="flex flex-wrap gap-4 items-center justify-between text-xs font-bold text-slate-500">
                         <p className="uppercase tracking-wider text-sm font-extrabold text-slate-700">Quadro Classificatório - EAD</p>
@@ -534,14 +693,13 @@ function DashboardContent() {
                                   "group transition-colors cursor-pointer",
                                   idx % 2 === 0 ? "bg-white" : "bg-orange-50/25",
                                   "hover:bg-orange-50/60"
-                                )}
-                              >
+                                )}>
                                 <td className="py-4 px-4 text-center">
                                   <span className={cn(
                                     "inline-flex items-center justify-center w-12 h-12 rounded-full text-lg font-black",
                                     consultant.rank === 1 ? "bg-amber-100 text-amber-900 ring-2 ring-amber-400/80 shadow-xs" :
                                     consultant.rank === 2 ? "bg-slate-200 text-slate-900 ring-2 ring-slate-400/80 shadow-xs" :
-                                    consultant.rank === 3 ? "bg-orange-100 text-orange-900 ring-2 ring-orange-400/80 shadow-xs" :
+                                    consultant.rank === 3 ? "bg-orange-100 text-orange-950 border-orange-300 shadow-xs" :
                                     "bg-slate-100/70 text-slate-600 border border-slate-200/30"
                                   )}>
                                     {consultant.rank}º
@@ -579,6 +737,79 @@ function DashboardContent() {
                             ))}
                           </tbody>
                         </table>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="w-full flex-1 flex flex-col justify-between glow-ead border-orange-200/40 p-2">
+                  {/* Card Header */}
+                  <div className="p-6 pb-2 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest bg-orange-50 px-2.5 py-1 rounded-full border border-orange-100/50">
+                        Canal Digital
+                      </span>
+                      <h2 className="text-3xl font-extrabold text-slate-950 font-display mt-2">
+                        Ranking Cursos EAD
+                      </h2>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] text-slate-500 font-medium">Período selecionado</p>
+                      <p className="text-sm font-bold text-orange-600 font-mono">
+                        {selectedMonth === '2026-06' ? 'Junho / 2026' : 'Julho / 2026'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <CardContent className="p-6 flex flex-col gap-6 flex-1 w-full animate-fadeIn">
+                    <div className="w-full space-y-4">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                        <p className="uppercase tracking-wider text-sm font-extrabold text-slate-700">Top 10 Cursos Mais Matriculados</p>
+                      </div>
+
+                      <div ref={eadCoursesScrollRef} className="w-full rounded-2xl border border-slate-100 bg-white shadow-sm pr-1 max-h-[520px] overflow-y-auto scrollbar-thin">
+                        <div className="divide-y divide-slate-100 min-w-[800px] p-2">
+                          {topCourses.map((course, index) => {
+                            const maxSales = topCourses[0]?.sales || 1;
+                            const percentage = Math.round((course.sales / maxSales) * 100);
+                            return (
+                              <div key={course.id} className="flex items-center justify-between py-4 px-6 hover:bg-slate-50/50 transition-colors">
+                                {/* Position, icon and name */}
+                                <div className="flex items-center gap-6 w-1/3 shrink-0">
+                                  <span className={cn(
+                                    "inline-flex items-center justify-center w-12 h-12 rounded-full text-lg font-black shrink-0 shadow-3xs",
+                                    index === 0 ? "bg-amber-100 text-amber-900 ring-2 ring-amber-400/80 shadow-xs" :
+                                    index === 1 ? "bg-slate-200 text-slate-900 ring-2 ring-slate-400/80 shadow-xs" :
+                                    index === 2 ? "bg-orange-100 text-orange-950 border-orange-300 shadow-xs" :
+                                    "bg-slate-100/70 text-slate-600 border border-slate-200/30"
+                                  )}>
+                                    {index + 1}º
+                                  </span>
+                                  <span className="text-xl font-black text-slate-900 tracking-tight">
+                                    {formatCourseName(course.name)}
+                                  </span>
+                                </div>
+
+                                {/* Progress bar */}
+                                <div className="flex-1 px-8">
+                                  <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden border border-slate-200/30">
+                                    <div 
+                                      className="h-full rounded-full bg-orange-500 transition-all duration-500 shadow-3xs" 
+                                      style={{ width: `${percentage}%` }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Total Sales */}
+                                <div className="w-32 text-right shrink-0">
+                                  <span className="text-2xl font-black text-orange-800 bg-orange-50 px-5 py-2.5 rounded-xl border border-orange-250/50 shadow-3xs font-mono">
+                                    {course.sales}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   </CardContent>
@@ -715,6 +946,12 @@ function AdminContent() {
 
   // Daily Sales Edit State
   const [editingDailyAgent, setEditingDailyAgent] = useState<Consultant | null>(null);
+
+  // Access Management State
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
+  const [adminStatusMessage, setAdminStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [tempDailySales, setTempDailySales] = useState<{ [key: number]: number }>({});
 
   // Dynamic calculations for selected month weekdays (removing Sat/Sun)
@@ -823,6 +1060,62 @@ function AdminContent() {
       saveDashboardData(newData);
       setLocalData(newData);
       queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+    }
+  };
+
+  const handleUpdateCourseSales = (id: number, delta: number) => {
+    if (!localData) return;
+    const newData = JSON.parse(JSON.stringify(localData)) as DashboardData;
+    
+    const course = newData.courses?.find(c => c.id === id);
+    if (course) {
+      course.sales = Math.max(0, course.sales + delta);
+      saveDashboardData(newData);
+      setLocalData(newData);
+      queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+    }
+  };
+
+  const handleCourseInputChange = (id: number, value: string) => {
+    if (!localData) return;
+    const parsed = parseInt(value, 10);
+    const sales = isNaN(parsed) ? 0 : Math.max(0, parsed);
+    
+    const newData = JSON.parse(JSON.stringify(localData)) as DashboardData;
+    const course = newData.courses?.find(c => c.id === id);
+    if (course) {
+      course.sales = sales;
+      saveDashboardData(newData);
+      setLocalData(newData);
+      queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+    }
+  };
+
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreatingAdmin(true);
+    setAdminStatusMessage(null);
+
+    try {
+      const { data: signUpData, error } = await supabase.auth.signUp({
+        email: newAdminEmail,
+        password: newAdminPassword,
+      });
+
+      if (error) {
+        setAdminStatusMessage({ type: 'error', text: `Erro: ${error.message}` });
+      } else {
+        setAdminStatusMessage({ 
+          type: 'success', 
+          text: `Sucesso! Administrador criado. Se as confirmações de e-mail estiverem ativas no seu painel Supabase, o usuário precisará confirmar o e-mail antes do primeiro login.` 
+        });
+        setNewAdminEmail('');
+        setNewAdminPassword('');
+      }
+    } catch (err: any) {
+      setAdminStatusMessage({ type: 'error', text: `Erro de rede: ${err.message || err}` });
+    } finally {
+      setIsCreatingAdmin(false);
     }
   };
 
@@ -1232,6 +1525,156 @@ function AdminContent() {
           </Card>
 
         </div>
+
+        {/* COURSES SALES EDIT SECTION */}
+        <Card className="w-full border-slate-200/50 p-6 shadow-sm flex flex-col space-y-4">
+          <div>
+            <h3 className="text-xl font-extrabold text-slate-950 font-display flex items-center gap-2">
+              🏆 Editar Matrículas por Curso
+            </h3>
+            <p className="text-sm text-slate-500">
+              Modifique a quantidade de matrículas registradas para cada curso no período selecionado.
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Presencial Courses */}
+            <div className="space-y-3">
+              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/50">
+                Cursos Presenciais
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[350px] overflow-y-auto pr-1">
+                {localData.courses?.filter(c => c.type === 'presencial').map(course => (
+                  <div key={course.id} className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-100 shadow-3xs">
+                    <span className="text-xs font-bold text-slate-800 truncate max-w-[130px]" title={formatCourseName(course.name)}>
+                      {formatCourseName(course.name)}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleUpdateCourseSales(course.id, -1)}
+                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-extrabold text-xs transition cursor-pointer"
+                      >
+                        -1
+                      </button>
+                      <input
+                        type="number"
+                        value={course.sales}
+                        onChange={(e) => handleCourseInputChange(course.id, e.target.value)}
+                        className="w-12 h-7 bg-slate-50 border border-slate-200 rounded-lg text-center font-extrabold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        min="0"
+                      />
+                      <button
+                        onClick={() => handleUpdateCourseSales(course.id, 1)}
+                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-extrabold text-xs transition cursor-pointer"
+                      >
+                        +1
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* EAD Courses */}
+            <div className="space-y-3">
+              <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest bg-orange-50 px-2.5 py-1 rounded-full border border-orange-100/50">
+                Cursos EAD
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[350px] overflow-y-auto pr-1">
+                {localData.courses?.filter(c => c.type === 'ead').map(course => (
+                  <div key={course.id} className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-100 shadow-3xs">
+                    <span className="text-xs font-bold text-slate-800 truncate max-w-[130px]" title={formatCourseName(course.name)}>
+                      {formatCourseName(course.name)}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleUpdateCourseSales(course.id, -1)}
+                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-extrabold text-xs transition cursor-pointer"
+                      >
+                        -1
+                      </button>
+                      <input
+                        type="number"
+                        value={course.sales}
+                        onChange={(e) => handleCourseInputChange(course.id, e.target.value)}
+                        className="w-12 h-7 bg-slate-50 border border-slate-200 rounded-lg text-center font-extrabold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        min="0"
+                      />
+                      <button
+                        onClick={() => handleUpdateCourseSales(course.id, 1)}
+                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-extrabold text-xs transition cursor-pointer"
+                      >
+                        +1
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* ACCESS MANAGEMENT SECTION */}
+        <Card className="w-full border-slate-200/50 p-6 shadow-sm flex flex-col space-y-4">
+          <div>
+            <h3 className="text-xl font-extrabold text-slate-950 font-display flex items-center gap-2">
+              👤 Cadastrar Novo Administrador
+            </h3>
+            <p className="text-sm text-slate-500">
+              Cadastre outras credenciais de e-mail e senha no Supabase Auth para que outras pessoas tenham acesso ao Painel Admin.
+            </p>
+          </div>
+
+          <form onSubmit={handleCreateAdmin} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end bg-slate-50 p-4 rounded-2xl border border-slate-150">
+            <div className="flex flex-col space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">E-mail Corporativo</label>
+              <input
+                type="email"
+                required
+                value={newAdminEmail}
+                onChange={(e) => setNewAdminEmail(e.target.value)}
+                placeholder="exemplo@unoeste.br"
+                className="px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+              />
+            </div>
+            
+            <div className="flex flex-col space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">Senha de Acesso</label>
+              <input
+                type="password"
+                required
+                value={newAdminPassword}
+                onChange={(e) => setNewAdminPassword(e.target.value)}
+                placeholder="Mínimo 6 caracteres"
+                className="px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                minLength={6}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isCreatingAdmin}
+              className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition cursor-pointer active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 animate-pulse-slow"
+            >
+              {isCreatingAdmin ? (
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+              ) : (
+                'Criar Administrador'
+              )}
+            </button>
+          </form>
+
+          {adminStatusMessage && (
+            <div className={cn(
+              "p-3 rounded-xl text-xs font-bold border",
+              adminStatusMessage.type === 'success' 
+                ? "bg-emerald-50 text-emerald-800 border-emerald-250/50 shadow-3xs" 
+                : "bg-red-50 text-red-855 border-red-250/50 shadow-3xs"
+            )}>
+              {adminStatusMessage.text}
+            </div>
+          )}
+        </Card>
 
         {/* Mural de Recados Section */}
         <Card className="w-full border-slate-200/50 p-6 shadow-sm flex flex-col space-y-4">

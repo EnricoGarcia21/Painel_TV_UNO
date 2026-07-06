@@ -11,7 +11,7 @@ interface AnnouncementCarouselProps {
 
 export const AnnouncementCarousel: React.FC<AnnouncementCarouselProps> = ({
   announcements,
-  autoPlayInterval = 8000,
+  autoPlayInterval = 15000,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);

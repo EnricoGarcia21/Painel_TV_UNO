@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { 
   BarChart, 
   Bar, 
@@ -7,9 +7,7 @@ import {
   CartesianGrid, 
   Tooltip, 
   Legend, 
-  ResponsiveContainer,
-  AreaChart,
-  Area
+  ResponsiveContainer
 } from 'recharts';
 import { ArrowLeft, Calendar, BarChart3, Tv, Globe, TrendingUp } from 'lucide-react';
 import type { DashboardData } from '../api/mockData';

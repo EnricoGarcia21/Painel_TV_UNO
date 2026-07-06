@@ -131,7 +131,7 @@ function DashboardContent() {
     }
 
     let animationFrameId: number;
-    const scrollSpeed = 0.25; // ultra-slow and stable scroll speed for TV presentation
+    const scrollSpeed = 0.30; // balanced scroll speed for comfortable TV presentation
 
     const scroll = () => {
       let container: HTMLDivElement | null = null;

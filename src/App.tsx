@@ -27,26 +27,13 @@ import {
 import type { Consultant, DashboardData, Announcement } from './api/mockData';
 import { supabase } from './api/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
-import { cn } from './lib/utils';
+import { cn, getCurrentMonthString, formatMonthLabel, getMonthOptions, formatCourseName } from './lib/utils';
 import { Card, CardContent } from './components/ui/Card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './components/ui/Dialog';
 import { AnnouncementCarousel } from './components/ui/AnnouncementCarousel';
 import Login from './components/Login';
 import DashboardTotals from './components/DashboardTotals';
 
-export const formatCourseName = (name: string) => {
-  return name
-    .replace(/_/g, ' ')
-    .replace(/\s*-\s*EAD/i, '')
-    .split(' ')
-    .map(word => {
-      if (!word) return '';
-      const lower = word.toLowerCase();
-      if (['de', 'da', 'do', 'e', 'para', 'o', 'com', 'social'].includes(lower)) return lower;
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-    })
-    .join(' ');
-};
 
 // React Query Client
 const queryClient = new QueryClient({
@@ -62,7 +49,7 @@ function DashboardContent() {
   const [time, setTime] = useState(new Date());
   const [selectedConsultant, setSelectedConsultant] = useState<Consultant | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState('2026-07');
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthString());
 
   // Fetch data using React Query (auto-updates every 10 seconds to simulate real-time operations)
   const { data, isLoading, error } = useQuery({
@@ -355,8 +342,9 @@ function DashboardContent() {
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="bg-transparent text-sm font-bold text-slate-700 focus:outline-none cursor-pointer"
               >
-                <option value="2026-06">Junho / 2026</option>
-                <option value="2026-07">Julho / 2026</option>
+                {getMonthOptions().map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
             <div className="h-4 w-[1px] bg-slate-200" />
@@ -595,7 +583,7 @@ function DashboardContent() {
                     <div className="text-right">
                       <p className="text-[11px] text-slate-500 font-medium">Período selecionado</p>
                       <p className="text-sm font-bold text-emerald-600 font-mono">
-                        {selectedMonth === '2026-06' ? 'Junho / 2026' : 'Julho / 2026'}
+                        {formatMonthLabel(selectedMonth)}
                       </p>
                     </div>
                   </div>
@@ -785,7 +773,7 @@ function DashboardContent() {
                     <div className="text-right">
                       <p className="text-[11px] text-slate-500 font-medium">Período selecionado</p>
                       <p className="text-sm font-bold text-orange-600 font-mono">
-                        {selectedMonth === '2026-06' ? 'Junho / 2026' : 'Julho / 2026'}
+                        {formatMonthLabel(selectedMonth)}
                       </p>
                     </div>
                   </div>
@@ -947,7 +935,7 @@ function DashboardContent() {
 function AdminContent() {
   const [time, setTime] = useState(new Date());
   const queryClient = useQueryClient();
-  const [selectedMonth, setSelectedMonth] = useState('2026-07');
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthString());
   
   // Live real-time clock
   useEffect(() => {
@@ -1284,8 +1272,9 @@ function AdminContent() {
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="bg-transparent text-sm font-bold text-slate-700 focus:outline-none cursor-pointer"
               >
-                <option value="2026-06">Junho / 2026</option>
-                <option value="2026-07">Julho / 2026</option>
+                {getMonthOptions().map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
             <div className="h-4 w-[1px] bg-slate-200" />
@@ -2040,9 +2029,10 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 }
 
 function DashboardTotalsWrapper() {
+  const currentMonth = getCurrentMonthString();
   const { data, isLoading, error } = useQuery({
-    queryKey: ['dashboardData', '2026-07'],
-    queryFn: () => fetchDashboardData('2026-07'),
+    queryKey: ['dashboardData', currentMonth],
+    queryFn: () => fetchDashboardData(currentMonth),
   });
 
   if (isLoading) {

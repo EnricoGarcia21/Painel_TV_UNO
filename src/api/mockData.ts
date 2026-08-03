@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import axios from 'axios';
+import { getCurrentMonthString } from '../lib/utils';
 
 export interface Consultant {
   id: number;
@@ -301,7 +302,7 @@ const loadDefaultDatabase = (): DashboardData => {
   };
 };
 
-export const fetchDashboardData = async (selectedMonth: string = "2026-07"): Promise<DashboardData> => {
+export const fetchDashboardData = async (selectedMonth: string = getCurrentMonthString()): Promise<DashboardData> => {
   // Fetch consultants from Supabase
   const { data: consultantsData, error: cError } = await supabase
     .from('consultants')

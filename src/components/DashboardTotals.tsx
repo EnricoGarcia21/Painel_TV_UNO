@@ -28,7 +28,7 @@ export default function DashboardTotals({ data }: DashboardTotalsProps) {
     ];
 
     allConsultants.forEach(c => {
-      const type = c.id >= 100 ? 'ead' : 'presencial';
+      const type = c.type === 'ead' ? 'ead' : 'presencial';
       if (c.dailySales) {
         Object.entries(c.dailySales).forEach(([period, days]) => {
           if (!totals[period]) {

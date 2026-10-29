@@ -849,7 +849,7 @@ function DashboardContent() {
               <div className="flex items-center gap-3">
                 <div className={cn(
                   "w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg text-white border-2",
-                  selectedConsultant.id >= 100 
+                  selectedConsultant.type === 'ead' 
                     ? "bg-gradient-to-tr from-orange-500 to-amber-600 border-orange-200" 
                     : "bg-gradient-to-tr from-emerald-500 to-green-600 border-green-200"
                 )}>
@@ -876,7 +876,7 @@ function DashboardContent() {
                   <p className="text-2xl font-extrabold text-indigo-700 mt-1 font-display">
                     {selectedConsultant.rank}º Lugar
                   </p>
-                  <span className="text-[9px] text-slate-400 mt-0.5">Ranking Geral {selectedConsultant.id >= 100 ? 'EAD' : 'Presencial'}</span>
+                  <span className="text-[9px] text-slate-400 mt-0.5">Ranking Geral {selectedConsultant.type === 'ead' ? 'EAD' : 'Presencial'}</span>
                 </div>
 
                 {/* Sales card */}
@@ -895,21 +895,21 @@ function DashboardContent() {
                 <div className="flex justify-between text-xs font-bold">
                   <span className="text-slate-600">Atingimento da Meta Pessoal (Mês)</span>
                   <span className="text-slate-900">
-                    {Math.round((Object.values(selectedConsultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0) / (selectedConsultant.id >= 100 ? 100 : 40)) * 100)}%
+                    {Math.round((Object.values(selectedConsultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0) / (selectedConsultant.type === 'ead' ? 100 : 40)) * 100)}%
                   </span>
                 </div>
                 <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
                   <div 
                     className={cn(
                       "h-full rounded-full transition-all duration-500",
-                      selectedConsultant.id >= 100 ? "bg-orange-500" : "bg-emerald-500"
+                      selectedConsultant.type === 'ead' ? "bg-orange-500" : "bg-emerald-500"
                     )}
-                    style={{ width: `${Math.min((Object.values(selectedConsultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0) / (selectedConsultant.id >= 100 ? 100 : 40)) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((Object.values(selectedConsultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0) / (selectedConsultant.type === 'ead' ? 100 : 40)) * 100, 100)}%` }}
                   />
                 </div>
                 <div className="flex justify-between text-[9px] text-slate-400 font-bold">
                   <span>Mês: {Object.values(selectedConsultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0)}</span>
-                  <span>Meta: {selectedConsultant.id >= 100 ? 100 : 40}</span>
+                  <span>Meta: {selectedConsultant.type === 'ead' ? 100 : 40}</span>
                 </div>
               </div>
             </div>
@@ -920,8 +920,8 @@ function DashboardContent() {
                 onClick={() => setIsDialogOpen(false)}
                 className={cn(
                   "px-4 py-2 text-sm font-bold text-white rounded-xl shadow-xs transition cursor-pointer active:scale-95",
-                  selectedConsultant.id >= 100 
-                    ? "bg-orange-50 hover:bg-orange-600" 
+                  selectedConsultant.type === 'ead' 
+                    ? "bg-orange-600 hover:bg-orange-700" 
                     : "bg-emerald-600 hover:bg-emerald-700"
                 )}
               >
@@ -1394,7 +1394,6 @@ function AdminContent() {
             <button
               onClick={() => {
                 if (window.confirm("Deseja realmente sair?")) {
-                  localStorage.removeItem('uno_mock_session');
                   supabase.auth.signOut().then(() => {
                     window.location.reload();
                   });
@@ -2440,27 +2439,14 @@ export default function App() {
     };
   }, []);
 
-  // Handle Supabase Auth Session & Mock session fallback
+  // Handle Supabase Auth Session
   useEffect(() => {
-    const isMock = localStorage.getItem('uno_mock_session') === 'true';
-    if (isMock) {
-      setSession({
-        user: { email: 'enricogarcia@unoeste.br', id: 'mock-admin' },
-        expires_at: 9999999999
-      } as any);
-      setAuthLoading(false);
-      return;
-    }
-
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (localStorage.getItem('uno_mock_session') === 'true') {
-        return;
-      }
       setSession(session);
       setAuthLoading(false);
     });

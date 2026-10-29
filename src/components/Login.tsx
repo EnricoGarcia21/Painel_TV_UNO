@@ -15,16 +15,9 @@ export default function Login() {
     setIsLoading(true);
     setErrorMessage(null);
 
-    // Mock bypass for specified admin credentials
-    if (email.trim() === 'enricogarcia@unoeste.br' && password === 'uno!este2026') {
-      localStorage.setItem('uno_mock_session', 'true');
-      window.location.reload();
-      return;
-    }
-
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       });
 

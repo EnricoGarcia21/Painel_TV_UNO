@@ -7,6 +7,7 @@ export interface Consultant {
   rank: number;
   name: string;
   avatar: string;
+  type: 'presencial' | 'ead';
   sales: number; // Grand total sales across all months
   dailySales: Record<string, Record<number, number>>; // key: "YYYY-MM" (e.g. "2026-07"), value: Record<day, quantity>
   status: 'active' | 'vacation';
@@ -213,7 +214,7 @@ const loadDefaultDatabase = (): DashboardData => {
       "2026-06": generateDailySales(june, 2026, 5),
       "2026-07": generateDailySales(july, 2026, 6)
     };
-    return { ...c, rank: 0, dailySales };
+    return { ...c, rank: 0, type: 'presencial' as const, dailySales };
   });
 
   const initialEad = [
@@ -233,7 +234,7 @@ const loadDefaultDatabase = (): DashboardData => {
       "2026-06": generateDailySales(june, 2026, 5),
       "2026-07": generateDailySales(july, 2026, 6)
     };
-    return { ...c, rank: 0, dailySales };
+    return { ...c, rank: 0, type: 'ead' as const, dailySales };
   });
 
   const announcements: Announcement[] = [
@@ -338,6 +339,7 @@ export const fetchDashboardData = async (selectedMonth: string = getCurrentMonth
     rank: 0, // rank will be computed after sorting
     name: c.name,
     avatar: c.avatar,
+    type: (c.type === 'ead' ? 'ead' : 'presencial') as 'presencial' | 'ead',
     sales: c.sales, // Overall cumulative sales
     dailySales: c.daily_sales || {}, // Nested monthly daily sales object
     status: c.status,
@@ -347,16 +349,9 @@ export const fetchDashboardData = async (selectedMonth: string = getCurrentMonth
     lastSaleTime: c.last_sale_time || undefined
   }));
 
-  // Separate Presencial and EAD using the database "type" field
-  const presencialRanking = mappedConsultants.filter(c => {
-    const dbItem = dbConsultants.find(dc => Number(dc.id) === c.id);
-    return dbItem?.type === 'presencial';
-  });
-
-  const eadRanking = mappedConsultants.filter(c => {
-    const dbItem = dbConsultants.find(dc => Number(dc.id) === c.id);
-    return dbItem?.type === 'ead';
-  });
+  // Separate Presencial and EAD using the native "type" field
+  const presencialRanking = mappedConsultants.filter(c => c.type === 'presencial');
+  const eadRanking = mappedConsultants.filter(c => c.type === 'ead');
 
   // Sort and apply ranks BASED ON SELECTED MONTH'S SALES
   const getMonthlySales = (c: Consultant) => {
@@ -578,6 +573,7 @@ export const addConsultantToDb = async (params: {
     rank: 0,
     name: dbRecord.name,
     avatar: dbRecord.avatar,
+    type: dbRecord.type,
     sales: 0,
     dailySales: initialDailySales,
     status: 'active',

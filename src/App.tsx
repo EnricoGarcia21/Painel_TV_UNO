@@ -11,7 +11,9 @@ import {
   Plus,
   Megaphone,
   LogOut,
-  BarChart3
+  BarChart3,
+  Trash2,
+  UserPlus
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -22,7 +24,9 @@ import {
   resetDashboardData, 
   setSimulationEnabled, 
   getSimulationEnabled,
-  adjustDailySales
+  adjustDailySales,
+  addConsultantToDb,
+  deleteConsultantFromDb
 } from './api/mockData';
 import type { Consultant, DashboardData, Announcement } from './api/mockData';
 import { supabase } from './api/supabaseClient';
@@ -932,6 +936,15 @@ function DashboardContent() {
   );
 }
 
+function getInitials(name: string): string {
+  if (!name || !name.trim()) return 'CO';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 function AdminContent() {
   const [time, setTime] = useState(new Date());
   const queryClient = useQueryClient();
@@ -950,6 +963,15 @@ function AdminContent() {
 
   const [localData, setLocalData] = useState<DashboardData | null>(null);
   const [simulationEnabled, setSimulationEnabledState] = useState(getSimulationEnabled());
+
+  // Consultant Add & Delete States
+  const [isAddConsultantOpen, setIsAddConsultantOpen] = useState(false);
+  const [newConsultantName, setNewConsultantName] = useState('');
+  const [newConsultantType, setNewConsultantType] = useState<'presencial' | 'ead'>('presencial');
+  const [isSubmittingConsultant, setIsSubmittingConsultant] = useState(false);
+
+  const [consultantToDelete, setConsultantToDelete] = useState<{ consultant: Consultant; type: 'presencial' | 'ead' } | null>(null);
+  const [isDeletingConsultant, setIsDeletingConsultant] = useState(false);
 
   // Announcement Form State
   const [isAnnounceModalOpen, setIsAnnounceModalOpen] = useState(false);
@@ -1230,6 +1252,90 @@ function AdminContent() {
     queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
   };
 
+  // Consultant Add & Delete Handlers
+  const handleOpenAddConsultant = (type: 'presencial' | 'ead') => {
+    setNewConsultantName('');
+    setNewConsultantType(type);
+    setIsAddConsultantOpen(true);
+  };
+
+  const handleAddConsultant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newConsultantName.trim() || !localData) return;
+
+    setIsSubmittingConsultant(true);
+    try {
+      const allExisting = [
+        ...localData.presencial.ranking,
+        ...localData.ead.ranking
+      ];
+      const existingIds = allExisting.map(c => c.id);
+      const avatar = getInitials(newConsultantName);
+
+      const added = await addConsultantToDb({
+        name: newConsultantName.trim(),
+        avatar,
+        type: newConsultantType,
+        selectedMonth,
+        existingIds
+      });
+
+      if (added) {
+        const newData = JSON.parse(JSON.stringify(localData)) as DashboardData;
+        if (newConsultantType === 'presencial') {
+          newData.presencial.ranking.push(added);
+          newData.presencial.ranking.forEach((c, idx) => { c.rank = idx + 1; });
+        } else {
+          newData.ead.ranking.push(added);
+          newData.ead.ranking.forEach((c, idx) => { c.rank = idx + 1; });
+        }
+        setLocalData(newData);
+        queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+        setIsAddConsultantOpen(false);
+      } else {
+        alert("Erro ao cadastrar consultor no banco de dados. Tente novamente.");
+      }
+    } catch (err) {
+      console.error("Erro ao adicionar consultor:", err);
+      alert("Erro ao adicionar consultor.");
+    } finally {
+      setIsSubmittingConsultant(false);
+    }
+  };
+
+  const handleOpenDeleteModal = (consultant: Consultant, type: 'presencial' | 'ead') => {
+    setConsultantToDelete({ consultant, type });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!consultantToDelete || !localData) return;
+    setIsDeletingConsultant(true);
+
+    try {
+      const success = await deleteConsultantFromDb(consultantToDelete.consultant.id);
+      if (success) {
+        const newData = JSON.parse(JSON.stringify(localData)) as DashboardData;
+        if (consultantToDelete.type === 'presencial') {
+          newData.presencial.ranking = newData.presencial.ranking.filter(c => c.id !== consultantToDelete.consultant.id);
+          newData.presencial.ranking.forEach((c, idx) => { c.rank = idx + 1; });
+        } else {
+          newData.ead.ranking = newData.ead.ranking.filter(c => c.id !== consultantToDelete.consultant.id);
+          newData.ead.ranking.forEach((c, idx) => { c.rank = idx + 1; });
+        }
+        setLocalData(newData);
+        queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+        setConsultantToDelete(null);
+      } else {
+        alert("Erro ao excluir consultor no Supabase. Verifique sua conexão e tente novamente.");
+      }
+    } catch (err) {
+      console.error("Erro ao excluir consultor:", err);
+      alert("Erro ao excluir consultor.");
+    } finally {
+      setIsDeletingConsultant(false);
+    }
+  };
+
   if (isLoading || !localData) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-slate-900 text-white">
@@ -1354,13 +1460,22 @@ function AdminContent() {
           
           {/* PRESENCIAL EDIT */}
           <Card className="border-green-200/40 p-6 flex flex-col justify-start space-y-4 glow-presencial">
-            <div>
-              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/50">
-                Canal Físico
-              </span>
-              <h2 className="text-2xl font-extrabold text-slate-950 font-display mt-2">
-                Ranking Presencial
-              </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/50">
+                  Canal Físico
+                </span>
+                <h2 className="text-2xl font-extrabold text-slate-950 font-display mt-2">
+                  Ranking Presencial
+                </h2>
+              </div>
+              <button
+                onClick={() => handleOpenAddConsultant('presencial')}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 transition cursor-pointer active:scale-95 shadow-sm self-start sm:self-auto"
+              >
+                <Plus className="h-4 w-4" />
+                Adicionar Consultor
+              </button>
             </div>
             
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
@@ -1441,21 +1556,42 @@ function AdminContent() {
                     >
                       <Calendar className="h-4 w-4" />
                     </button>
+                    <button
+                      onClick={() => handleOpenDeleteModal(consultant, 'presencial')}
+                      className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-100/60 flex items-center justify-center font-extrabold text-xs transition cursor-pointer active:scale-95 ml-1"
+                      title="Excluir consultor"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               ))}
+              {localData.presencial.ranking.length === 0 && (
+                <div className="py-8 text-center text-slate-400 font-bold text-xs bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                  Nenhum consultor presencial cadastrado. Clique em "Adicionar Consultor" acima.
+                </div>
+              )}
             </div>
           </Card>
 
           {/* EAD EDIT */}
           <Card className="border-orange-200/40 p-6 flex flex-col justify-start space-y-4 glow-ead">
-            <div>
-              <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest bg-orange-50 px-2.5 py-1 rounded-full border border-orange-100/50">
-                Canal Digital
-              </span>
-              <h2 className="text-2xl font-extrabold text-slate-950 font-display mt-2">
-                Ranking EAD
-              </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest bg-orange-50 px-2.5 py-1 rounded-full border border-orange-100/50">
+                  Canal Digital
+                </span>
+                <h2 className="text-2xl font-extrabold text-slate-950 font-display mt-2">
+                  Ranking EAD
+                </h2>
+              </div>
+              <button
+                onClick={() => handleOpenAddConsultant('ead')}
+                className="px-3.5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 transition cursor-pointer active:scale-95 shadow-sm self-start sm:self-auto"
+              >
+                <Plus className="h-4 w-4" />
+                Adicionar Consultor
+              </button>
             </div>
             
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
@@ -1536,9 +1672,21 @@ function AdminContent() {
                     >
                       <Calendar className="h-4 w-4" />
                     </button>
+                    <button
+                      onClick={() => handleOpenDeleteModal(consultant, 'ead')}
+                      className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-100/60 flex items-center justify-center font-extrabold text-xs transition cursor-pointer active:scale-95 ml-1"
+                      title="Excluir consultor"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               ))}
+              {localData.ead.ranking.length === 0 && (
+                <div className="py-8 text-center text-slate-400 font-bold text-xs bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                  Nenhum consultor EAD cadastrado. Clique em "Adicionar Consultor" acima.
+                </div>
+              )}
             </div>
           </Card>
 
@@ -1989,6 +2137,196 @@ function AdminContent() {
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Consultant Create Dialog */}
+      <Dialog open={isAddConsultantOpen} onOpenChange={setIsAddConsultantOpen}>
+        <DialogContent onClose={() => setIsAddConsultantOpen(false)} className="max-w-md border-slate-200">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
+              <UserPlus className={cn("h-5 w-5", newConsultantType === 'presencial' ? "text-emerald-600" : "text-orange-600")} />
+              Adicionar Novo Consultor
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Cadastre um novo consultor comercial. O avatar será gerado automaticamente a partir das iniciais do nome.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddConsultant} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">Nome do Consultor</label>
+              <input
+                type="text"
+                required
+                value={newConsultantName}
+                onChange={(e) => setNewConsultantName(e.target.value)}
+                placeholder="Ex: Carlos Silva"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">Canal / Modalidade</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setNewConsultantType('presencial')}
+                  className={cn(
+                    "py-2.5 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer",
+                    newConsultantType === 'presencial'
+                      ? "bg-emerald-50 border-emerald-500 text-emerald-800 shadow-xs"
+                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  )}
+                >
+                  <span className={cn("h-2.5 w-2.5 rounded-full", newConsultantType === 'presencial' ? "bg-emerald-600" : "bg-slate-300")} />
+                  Presencial (Físico)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewConsultantType('ead')}
+                  className={cn(
+                    "py-2.5 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer",
+                    newConsultantType === 'ead'
+                      ? "bg-orange-50 border-orange-500 text-orange-800 shadow-xs"
+                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  )}
+                >
+                  <span className={cn("h-2.5 w-2.5 rounded-full", newConsultantType === 'ead' ? "bg-orange-600" : "bg-slate-300")} />
+                  EAD (Digital)
+                </button>
+              </div>
+            </div>
+
+            {/* Avatar Preview */}
+            <div className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl flex items-center gap-3">
+              <div className={cn(
+                "h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm border shadow-3xs",
+                newConsultantType === 'presencial' 
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-200" 
+                  : "bg-orange-50 text-orange-800 border-orange-200"
+              )}>
+                {getInitials(newConsultantName)}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-800">
+                  {newConsultantName.trim() || "Nome do Consultor"}
+                </p>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  Avatar gerado: <strong className="font-mono text-slate-700">{getInitials(newConsultantName)}</strong> • Status inicial: <strong>Ativo</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsAddConsultantOpen(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingConsultant || !newConsultantName.trim()}
+                className={cn(
+                  "px-5 py-2.5 rounded-xl text-xs font-bold text-white transition cursor-pointer shadow-sm active:scale-95 disabled:opacity-50",
+                  newConsultantType === 'presencial' ? "bg-emerald-600 hover:bg-emerald-700" : "bg-orange-600 hover:bg-orange-700"
+                )}
+              >
+                {isSubmittingConsultant ? 'Cadastrando...' : 'Cadastrar Consultor'}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!consultantToDelete} onOpenChange={(open) => { if (!open) setConsultantToDelete(null); }}>
+        <DialogContent onClose={() => setConsultantToDelete(null)} className="max-w-md border-red-200">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-600" />
+              Confirmar Exclusão de Consultor
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Esta ação removerá o consultor do ranking da TV e do banco de dados do Supabase.
+            </DialogDescription>
+          </DialogHeader>
+
+          {consultantToDelete && (() => {
+            const consultant = consultantToDelete.consultant;
+            const currentMonthSales = Object.values(consultant.dailySales?.[selectedMonth] || {}).reduce((a, b) => a + b, 0);
+            const totalSales = consultant.sales || 0;
+
+            return (
+              <div className="space-y-4 py-2">
+                {/* Consultant summary card */}
+                <div className="flex items-center gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className={cn(
+                    "h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm border shadow-3xs",
+                    consultantToDelete.type === 'presencial'
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                      : "bg-orange-50 text-orange-800 border-orange-200"
+                  )}>
+                    {consultant.avatar}
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-bold text-slate-900">{consultant.name}</h4>
+                    <p className="text-[11px] text-slate-500">
+                      Canal: <strong className={consultantToDelete.type === 'presencial' ? "text-emerald-700 font-bold" : "text-orange-700 font-bold"}>
+                        {consultantToDelete.type === 'presencial' ? "Presencial (Físico)" : "EAD (Digital)"}
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sales alert if sales > 0 */}
+                {currentMonthSales > 0 || totalSales > 0 ? (
+                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5">
+                    <p className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                      ⚠️ Atenção: Consultor possui matrículas registradas!
+                    </p>
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      Este consultor possui <strong>{currentMonthSales} matrículas</strong> no mês selecionado e <strong>{totalSales} matrículas acumuladas</strong> no geral.
+                    </p>
+                    <p className="text-[11px] text-amber-700 font-semibold pt-1 border-t border-amber-200/60">
+                      Ao confirmar, estas matrículas serão removidas dos rankings e das métricas consolidadas. Essa ação não pode ser desfeita.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600">
+                    O consultor não possui matrículas registradas. A exclusão será imediata.
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setConsultantToDelete(null)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDelete}
+                    disabled={isDeletingConsultant}
+                    className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition cursor-pointer shadow-sm active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isDeletingConsultant ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                        Excluindo...
+                      </>
+                    ) : (
+                      'Excluir Definitivamente'
+                    )}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

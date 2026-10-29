@@ -523,6 +523,83 @@ export const saveDashboardData = async (newData: DashboardData) => {
   }
 };
 
+export const addConsultantToDb = async (params: {
+  name: string;
+  avatar: string;
+  type: 'presencial' | 'ead';
+  selectedMonth: string;
+  existingIds?: number[];
+}): Promise<Consultant | null> => {
+  const [yearStr, monthIndexStr] = params.selectedMonth.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthIndexStr, 10) - 1;
+
+  let nextId: number;
+  if (params.existingIds && params.existingIds.length > 0) {
+    nextId = Math.max(...params.existingIds) + 1;
+  } else {
+    const { data } = await supabase
+      .from('consultants')
+      .select('id')
+      .order('id', { ascending: false })
+      .limit(1);
+    nextId = data && data.length > 0 ? Number(data[0].id) + 1 : (params.type === 'presencial' ? 1 : 101);
+  }
+
+  const initialDailySales = {
+    [params.selectedMonth]: generateDailySales(0, year, month)
+  };
+
+  const dbRecord = {
+    id: nextId,
+    name: params.name.trim(),
+    avatar: params.avatar.trim().toUpperCase(),
+    type: params.type,
+    sales: 0,
+    daily_sales: initialDailySales,
+    status: 'active' as const,
+    value: 0,
+    conversion_rate: 0,
+    trend: 'stable' as const,
+    last_sale_time: null
+  };
+
+  const { error } = await supabase
+    .from('consultants')
+    .insert(dbRecord);
+
+  if (error) {
+    console.error("Error inserting new consultant into Supabase:", error);
+    return null;
+  }
+
+  return {
+    id: nextId,
+    rank: 0,
+    name: dbRecord.name,
+    avatar: dbRecord.avatar,
+    sales: 0,
+    dailySales: initialDailySales,
+    status: 'active',
+    value: 0,
+    conversionRate: 0,
+    trend: 'stable'
+  };
+};
+
+export const deleteConsultantFromDb = async (id: number): Promise<boolean> => {
+  const { error } = await supabase
+    .from('consultants')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error(`Error deleting consultant ${id} from Supabase:`, error);
+    return false;
+  }
+  return true;
+};
+
 export const resetDashboardData = async () => {
   // Clear tables
   const { error: delConsultantsErr } = await supabase
